@@ -1,0 +1,13 @@
+# Build output
+/build
+*.rbxl
+*.rbxlx
+*.rbxl.lock
+*.rbxlx.lock
+
+# Local tooling (rojo.exe lives here, downloaded per-machine)
+/tools
+
+# Editor
+.vscode/
+*.code-workspace
