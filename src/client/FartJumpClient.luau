@@ -24,7 +24,7 @@ local lastLocalFire = 0
 
 local cooldownFill: Frame? = nil
 local cooldownLabel: TextLabel? = nil
-local buttonLabel: TextLabel? = nil
+local button: TextButton? = nil
 local touchButton: TextButton? = nil
 
 local function getMoveDirection(): Vector3
@@ -66,8 +66,8 @@ local function updateCooldownVisual()
 		cooldownFill.BackgroundColor3 = if remain > 0 then Color3.fromRGB(90, 97, 115) else UI.Palette.accent
 	end
 	local ready = remain <= 0
-	if buttonLabel then
-		buttonLabel.Text = if ready then "💨 JUMP" else string.format("%.1fs", remain)
+	if button then
+		button.Text = if ready then "💨 JUMP" else string.format("%.1fs", remain)
 	end
 	if cooldownLabel then
 		cooldownLabel.Text = if ready then "Fart Jump ready — press F" else string.format("Fart Jump: %.1fs", remain)
@@ -100,18 +100,18 @@ function FartJumpClient.start()
 		Parent = gui,
 	})
 
-	-- Desktop jump button (bottom-center), also click/tap-able.
-	local button = UI.button({
+	-- Desktop jump button (bottom-right), also click/tap-able.
+	button = UI.button({
 		Text = "💨 JUMP",
 		Size = UDim2.fromOffset(150, 60),
-		AnchorPoint = Vector2.new(0.5, 1),
-		Position = UDim2.new(0.5, 0, 1, -24),
+		AnchorPoint = Vector2.new(1, 1),
+		Position = UDim2.new(1, -20, 1, -24),
 		Color = UI.Palette.accent,
 		MaxTextSize = 24,
 		CornerRadius = 16,
 		Parent = gui,
 	})
-	buttonLabel = button:FindFirstChildOfClass("TextLabel")
+	-- cooldown fill (behind button text)
 	cooldownFill = UI.create("Frame", {
 		Name = "CooldownFill",
 		Size = UDim2.fromScale(1, 1),
@@ -122,10 +122,6 @@ function FartJumpClient.start()
 		ZIndex = 0,
 		Parent = button,
 	})
-	-- Ensure the fill sits behind the text label.
-	if buttonLabel then
-		buttonLabel.ZIndex = 2
-	end
 
 	button.Activated:Connect(tryFire)
 

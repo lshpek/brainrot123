@@ -49,7 +49,7 @@ local DEFAULT_DATA = {
 	pets = {}, -- [petId] = { owned, equipped }
 	equippedPets = {}, -- [petId] = true, max 3
 	-- Zone/world progression.
-		zoneUnlocks = { Beach = true }, -- starting hub unlocked by default
+	zoneUnlocks = { Settlement = true }, -- starting hub unlocked by default
 	-- Quest completion state: [questId] = { progress, completed, claimed }
 	quests = {},
 	-- First-session onboarding milestones (persisted so the tutorial does not
@@ -71,6 +71,11 @@ local store = nil -- nil when DataStores are unavailable
 local dataStoresEnabled = false -- true only when we can actually read/write
 local sandboxProfiles = {} -- [Player] = isolated sandbox profile
 local sandboxEnabled = {} -- [Player] = boolean
+
+-- Forward declarations for locals used by public functions above their definition.
+local deepCopy
+local sync
+local saveProfile
 
 -- Return the profile the caller should read or mutate: the isolated sandbox
 -- copy when sandbox mode is active for this player, otherwise production.
@@ -117,7 +122,7 @@ function Data.setSandboxMode(player: Player, enabled: boolean)
 	sync(player)
 end
 
-local function deepCopy(source)
+deepCopy = function(source)
 	local copy = {}
 	for key, value in source do
 		copy[key] = if type(value) == "table" then deepCopy(value) else value
@@ -131,7 +136,7 @@ end
 
 -- Push the profile into leaderstats (auto-replicates to everyone's player list)
 -- and attributes (used by the client UI). Always reflects the *active* profile.
-local function sync(player: Player)
+sync = function(player: Player)
 	local profile = activeProfile(player)
 	local stats = player:FindFirstChild("leaderstats")
 	if not profile or not stats then
@@ -181,26 +186,56 @@ local function migrateData(data: { [string]: any }): { [string]: any }
 		data.equippedBrainrot = "toxic_titan"
 		data.pets = {}
 		data.equippedPets = {}
-		data.zoneUnlocks = { Beach = true }
+		data.zoneUnlocks = { Settlement = true }
 		data.quests = {}
 		data.version = CURRENT_SCHEMA
 	end
 	-- Repair missing/invalid fields without erasing legitimate progression.
-	if type(data.power) ~= "number" then data.power = 0 end
-	if type(data.coins) ~= "number" then data.coins = 0 end
-	if type(data.rebirths) ~= "number" then data.rebirths = 0 end
-	if type(data.gearLevel) ~= "number" then data.gearLevel = 0 end
-	if type(data.brainrots) ~= "table" then data.brainrots = {} end
-	if type(data.pets) ~= "table" then data.pets = {} end
-	if type(data.equippedPets) ~= "table" then data.equippedPets = {} end
-	if type(data.zoneUnlocks) ~= "table" then data.zoneUnlocks = { Beach = true } end
-	if type(data.quests) ~= "table" then data.quests = {} end
-	if type(data.milestones) ~= "table" then data.milestones = {} end
-	if type(data.receipts) ~= "table" then data.receipts = {} end
-	if type(data.skins) ~= "table" then data.skins = {} end
-	if data.equippedSkin == nil then data.equippedSkin = nil end
-	if data.equippedBrainrot == nil then data.equippedBrainrot = "toxic_titan" end
-	if data.version == nil then data.version = CURRENT_SCHEMA end
+	if type(data.power) ~= "number" then
+		data.power = 0
+	end
+	if type(data.coins) ~= "number" then
+		data.coins = 0
+	end
+	if type(data.rebirths) ~= "number" then
+		data.rebirths = 0
+	end
+	if type(data.gearLevel) ~= "number" then
+		data.gearLevel = 0
+	end
+	if type(data.brainrots) ~= "table" then
+		data.brainrots = {}
+	end
+	if type(data.pets) ~= "table" then
+		data.pets = {}
+	end
+	if type(data.equippedPets) ~= "table" then
+		data.equippedPets = {}
+	end
+	if type(data.zoneUnlocks) ~= "table" then
+		data.zoneUnlocks = { Settlement = true }
+	end
+	if type(data.quests) ~= "table" then
+		data.quests = {}
+	end
+	if type(data.milestones) ~= "table" then
+		data.milestones = {}
+	end
+	if type(data.receipts) ~= "table" then
+		data.receipts = {}
+	end
+	if type(data.skins) ~= "table" then
+		data.skins = {}
+	end
+	if data.equippedSkin == nil then
+		data.equippedSkin = nil
+	end
+	if data.equippedBrainrot == nil then
+		data.equippedBrainrot = "toxic_titan"
+	end
+	if data.version == nil then
+		data.version = CURRENT_SCHEMA
+	end
 	return data
 end
 
@@ -254,12 +289,10 @@ local function loadProfile(player: Player)
 	-- Session-ownership / stale-write protection: if another server session
 	-- holds a live lease on this profile, do not load it (that session is the
 	-- authoritative owner until its lease expires).
-	local now = os.clock()
+	local now = tick()
 	local lock = data.sessionToken
 	if type(lock) == "table" and type(lock.expiresAt) == "number" and lock.expiresAt > now then
-		warn(
-			`[Data] {player.Name} profile has an active session lock (expires {lock.expiresAt}); refusing to load.`
-		)
+		warn(`[Data] {player.Name} profile has an active session lock (expires {lock.expiresAt}); refusing to load.`)
 		return nil, STATE_FAILED, false
 	end
 
@@ -277,7 +310,7 @@ end
 -- Save only when it is safe to do so. Never write when the profile failed to
 -- load (that would persist default/unknown data over real progress) or when
 -- DataStores are off.
-local function saveProfile(player: Player): boolean
+saveProfile = function(player: Player): boolean
 	if sandboxEnabled[player] == true then
 		return false -- never persist sandbox state
 	end
@@ -302,19 +335,16 @@ local function saveProfile(player: Player): boolean
 			-- on this profile, refuse to overwrite it (stale/displaced session).
 			local ourToken = sessionTokens[player]
 			if old ~= nil and type(old.sessionToken) == "table" then
-				local live = type(old.sessionToken.expiresAt) == "number"
-					and old.sessionToken.expiresAt > os.clock()
-				if live and old.sessionToken.token ~= ourToken then
-					warn(
-						`[Data] Save refused for {player.Name}: another session holds a live profile lock.`
-					)
+				local live = type(old.sessionToken.expiresAt) == "number" and old.sessionToken.expiresAt > tick()
+				if live and old.sessionToken.token ~= (ourToken and ourToken.token) then
+					warn(`[Data] Save refused for {player.Name}: another session holds a live profile lock.`)
 					return old
 				end
 			end
 			-- Renew this session's lease so autosave keeps ownership alive.
 			if ourToken then
 				profile.sessionToken = ourToken
-				profile.sessionToken.expiresAt = os.clock() + SESSION_LEASE
+				profile.sessionToken.expiresAt = tick() + SESSION_LEASE
 			end
 			return profile
 		end)
@@ -376,9 +406,9 @@ local function onPlayerAdded(player: Player)
 	-- it is persisted on the next save. A displaced/expired session cannot
 	-- overwrite a newer held lock (enforced in saveProfile).
 	local token = { token = tostring(Random.new():NextInteger(1, 1e9)) }
-	sessionTokens[player] = token.token
+	sessionTokens[player] = token
 	profile.sessionToken = token
-	profile.sessionToken.expiresAt = os.clock() + SESSION_LEASE
+	profile.sessionToken.expiresAt = tick() + SESSION_LEASE
 
 	local stats = Instance.new("Folder")
 	stats.Name = "leaderstats"
@@ -884,3 +914,4 @@ function Data.start()
 	end)
 
 	return Data
+end

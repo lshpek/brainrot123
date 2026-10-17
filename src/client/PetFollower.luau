@@ -13,6 +13,7 @@ local Players = game:GetService("Players")
 local RunService = game:GetService("RunService")
 
 local Config = require(game:GetService("ReplicatedStorage").Shared.Config)
+local Trove = require(game:GetService("ReplicatedStorage").Shared.Trove)
 
 local PetFollower = {}
 
@@ -20,7 +21,7 @@ local player = Players.LocalPlayer
 
 local followers = {} -- [petId] = { model = Model, offset = Vector3 }
 local followerGui: ScreenGui? = nil
-local connection: RBXScriptConnection? = nil
+local trove: any = nil
 
 local MAX_PETS = Config.MaxEquippedPets or 3
 
@@ -168,9 +169,13 @@ end
 
 function PetFollower.start()
 	clearAllFollowers()
+	if trove then
+		trove:Clean()
+	end
+	trove = Trove.new()
 
 	-- Rebuild followers whenever equipped-pet state changes.
-	player:GetAttributeChangedSignal("EquippedPets"):Connect(function()
+	trove:Connect(player:GetAttributeChangedSignal("EquippedPets"), function()
 		clearAllFollowers()
 		task.defer(function()
 			updateFollowers()
@@ -178,21 +183,21 @@ function PetFollower.start()
 	end)
 
 	-- Respawn followers on character respawn (avoid duplicates/strays).
-	player.CharacterAdded:Connect(function()
+	trove:Connect(player.CharacterAdded, function()
 		clearAllFollowers()
 		task.defer(function()
 			updateFollowers()
 		end)
 	end)
 
-	connection = RunService.RenderStepped:Connect(updateFollowers)
+	trove:Add(RunService.RenderStepped:Connect(updateFollowers))
 	updateFollowers()
 end
 
 function PetFollower.stop()
-	if connection then
-		connection:Disconnect()
-		connection = nil
+	if trove then
+		trove:Clean()
+		trove = nil
 	end
 	clearAllFollowers()
 end

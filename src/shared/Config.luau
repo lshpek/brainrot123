@@ -21,11 +21,9 @@ Config.Training = {
 Config.FartJump = {
 	enabled = true,
 	cooldown = 1.6, -- seconds between jumps (server-enforced)
-	basePower = 55, -- upward impulse at strength 0
-	powerPerStrength = 6, -- impulse added per "strength point"
-	strengthSoftCap = 2500, -- power beyond this scales with diminishing returns
-	diminishingFactor = 0.5, -- exponent applied past the soft cap (0.5 = sqrt)
-	maxUpImpulse = 140, -- hard cap on vertical impulse
+	baseImpulse = 55, -- upward impulse at strength 0
+	maxImpulse = 140, -- hard cap on vertical impulse (asymptotic)
+	scaleK = 2500, -- soft-cap parameter: at power=scaleK, impulse is ~50% of max delta
 	maxForwardImpulse = 70, -- hard cap on horizontal impulse
 	forwardFactor = 0.8, -- horizontal impulse relative to upward
 	groundedOnly = true, -- must be on the ground to launch
@@ -48,12 +46,16 @@ Config.Gear = {
 	{ name = "Void Knuckles", cost = 10_000_000, multiplier = 200, color = Color3.fromRGB(140, 60, 220) },
 }
 
--- Zones are laid out west-to-east by MapBuilder. Standing on a zone's training
--- pads multiplies your punches, but only if you meet the power requirement
--- (validated on the server -- walking through a gate exploit gains nothing).
+-- ============================== ZONES / WORLD GEOMETRY ==============================
+-- Zones are the five regions, laid out west-to-east by MapBuilder. Standing on a
+-- zone's floor multiplies your training punches, but only if you meet the power
+-- requirement (validated server-side so walking through a gate exploit gains nothing).
+-- These values are the single source of truth for zone geometry properties;
+-- WorldLayouts provides the world IDs and positions.
 Config.Zones = {
 	{
-		name = "Beach",
+		name = "Settlement",
+		worldId = "settlement",
 		powerRequired = 0,
 		multiplier = 1,
 		floorColor = Color3.fromRGB(238, 214, 160),
@@ -61,7 +63,17 @@ Config.Zones = {
 		floorMaterial = Enum.Material.Sand,
 	},
 	{
+		name = "Village",
+		worldId = "village",
+		powerRequired = 0,
+		multiplier = 1,
+		floorColor = Color3.fromRGB(140, 180, 100),
+		accentColor = Color3.fromRGB(90, 150, 60),
+		floorMaterial = Enum.Material.Grass,
+	},
+	{
 		name = "City",
+		worldId = "city",
 		powerRequired = 5_000,
 		multiplier = 3,
 		floorColor = Color3.fromRGB(112, 112, 118),
@@ -69,15 +81,17 @@ Config.Zones = {
 		floorMaterial = Enum.Material.Concrete,
 	},
 	{
-		name = "Volcano",
+		name = "Megacity",
+		worldId = "megacity",
 		powerRequired = 50_000,
 		multiplier = 8,
-		floorColor = Color3.fromRGB(62, 48, 46),
-		accentColor = Color3.fromRGB(255, 100, 30),
-		floorMaterial = Enum.Material.Basalt,
+		floorColor = Color3.fromRGB(60, 60, 80),
+		accentColor = Color3.fromRGB(120, 60, 220),
+		floorMaterial = Enum.Material.Slate,
 	},
 	{
-		name = "Space",
+		name = "Space City",
+		worldId = "space_city",
 		powerRequired = 500_000,
 		multiplier = 20,
 		floorColor = Color3.fromRGB(42, 38, 62),
@@ -86,9 +100,10 @@ Config.Zones = {
 	},
 }
 
--- The VIP island hangs off the Beach and requires the VIP gamepass instead of power.
+-- The VIP island hangs off the Settlement and requires the VIP gamepass instead of power.
 Config.VipZone = {
 	name = "VIP Island",
+	worldId = "vip_island",
 	multiplier = 50,
 	floorColor = Color3.fromRGB(235, 225, 180),
 	accentColor = Color3.fromRGB(255, 215, 0),
@@ -485,15 +500,14 @@ Config.Combat = {
 	xpPerCoinReward = 0.1, -- bonus XP from coin rewards
 }
 
--- ============================== ZONES ==============================
--- Extended with building lists and egg availability per zone.
--- Starting hub is index 1 (Beach). Village is index 2 (City).
-
+-- ============================== ZONE BUILDINGS ==============================
+-- Building pools per world ID. Used by BuildingService.spawnWorldBuildings.
 Config.ZoneBuildings = {
-	["Beach"] = { "mailbox", "fence", "shack" },
-	["City"] = { "shack", "house", "town_hall" },
-	["Volcano"] = { "house", "town_hall" },
-	["Space"] = { "town_hall" },
+	["settlement"] = { "mailbox", "fence", "shack", "house" },
+	["village"] = { "shack", "house", "fence" },
+	["city"] = { "house", "town_hall", "shack" },
+	["megacity"] = { "town_hall", "house" },
+	["space_city"] = { "town_hall" },
 }
 
 -- ============================== QUESTS ==============================
@@ -728,10 +742,10 @@ Config.WorldLayouts = {
 		name = "Village",
 		themeColor = Color3.fromRGB(140, 180, 100),
 		themeMaterial = Enum.Material.Grass,
-		spawn = Vector3.new(140, 0.5, 40),
-		bossPosition = Vector3.new(140, 0, 80),
+		spawn = Vector3.new(0, 0.5, 40),
+		bossPosition = Vector3.new(0, 0, 80),
 		bossId = "village_boss",
-		arenaPosition = Vector3.new(140, 0, -50),
+		arenaPosition = Vector3.new(0, 0, -50),
 		arenaRadius = 30,
 		districts = {
 			{ name = "Market", offset = Vector3.new(0, 0, 40) },

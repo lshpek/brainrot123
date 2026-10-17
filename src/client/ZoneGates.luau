@@ -32,8 +32,15 @@ local function setGateState(gate: BasePart, unlocked: boolean)
 end
 
 function ZoneGates.start()
-	local gatesFolder = workspace:WaitForChild("ZoneGates")
-	local power = player:WaitForChild("leaderstats"):WaitForChild("Power")
+	local gatesFolder = workspace:FindFirstChild("ZoneGates")
+	if not gatesFolder then
+		gatesFolder = workspace:WaitForChild("ZoneGates", 10)
+	end
+	if not gatesFolder then
+		warn("[ZoneGates] ZoneGates folder never appeared; gates disabled.")
+		return
+	end
+	local power = player:WaitForChild("leaderstats", 10):WaitForChild("Power", 10)
 
 	local gateStates = {} -- [gate] = currently unlocked?
 

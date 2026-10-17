@@ -421,6 +421,8 @@ local function buildStructure(zoneFolder: Folder, buildingId: string, position: 
 		dead = false,
 		deadUntil = 0,
 		visuals = { body = body },
+		generationId = 0, -- bumped every respawn; stale callbacks must abort
+		rewardClaimedGen = -1, -- generation already rewarded (exactly-once per gen)
 	}
 
 	-- Map EVERY part (and the Model) so attacks on any valid part resolve to
@@ -482,6 +484,7 @@ local function destroyBuilding(data)
 	end
 	data.dead = true
 	data.deadUntil = os.clock() + data.respawnTime
+	local gen = data.generationId
 
 	-- Collapse every part to a faint, non-colliding rubble state.
 	for _, p in data.parts do
@@ -507,10 +510,14 @@ local function destroyBuilding(data)
 	end
 
 	task.delay(data.respawnTime, function()
+		if gen ~= data.generationId then
+			return -- stale respawn from a previous generation; abort
+		end
 		if not data.model or not data.model.Parent then
 			return
 		end
 		data.dead = false
+		data.generationId += 1
 		data.health = data.maxHealth
 		for _, p in data.parts do
 			if p.Parent then
@@ -591,6 +598,13 @@ function BuildingService.damageBuilding(player: Player, target: Instance, damage
 	applyDamageStage(data)
 
 	if data.health <= 0 then
+		-- Exactly-once reward per generation: set the claim BEFORE any yield
+		-- (Data/Brainrot calls below may yield) so two simultaneous lethal
+		-- hits cannot both grant. Second hit sees dead=true and is rejected.
+		if data.rewardClaimedGen == data.generationId then
+			return nil
+		end
+		data.rewardClaimedGen = data.generationId
 		-- Reward (server-owned).
 		local reward = {
 			coins = data.config.rewardCoins,

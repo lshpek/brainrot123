@@ -54,6 +54,20 @@ local function pushUpdate(player, questId, progress, completed)
 	end
 end
 
+-- Forward declaration for analytics so grantQuestReward can call it.
+local AnalyticsTrack
+
+AnalyticsTrack = function(player, eventName, value)
+	local ok, analytics = pcall(function()
+		return require(script.Parent.Analytics)
+	end)
+	if ok and analytics and analytics.track then
+		pcall(function()
+			analytics.track(player, eventName, value)
+		end)
+	end
+end
+
 -- Grant the quest reward from trusted config only. Client values are never trusted.
 -- Returns {coins=..., xp=...} granted, or nil if the profile is unavailable.
 -- The grant is applied to the active (sandbox or production) profile in memory;
@@ -76,17 +90,6 @@ local function grantQuestReward(player, quest)
 	end
 	AnalyticsTrack(player, "quest_complete", quest.id)
 	return granted
-end
-
-local function AnalyticsTrack(player, eventName, value)
-	local ok, analytics = pcall(function()
-		return require(script.Parent.Analytics)
-	end)
-	if ok and analytics and analytics.track then
-		pcall(function()
-			analytics.track(player, eventName, value)
-		end)
-	end
 end
 
 -- Complete a quest and grant its reward exactly once.
@@ -116,6 +119,18 @@ local function completeQuest(player, quest)
 	end
 	state.progress = quest.target
 	state.completed = true
+
+	-- Snapshot pre-grant Brainrot state so a save failure can fully restore it
+	-- (not just XP — level changes from the grant must also be rolled back).
+	local snapshot = nil
+	local equippedId = profile.equippedBrainrot
+	if quest.rewardXp and quest.rewardXp > 0 and equippedId then
+		local entry = profile.brainrots and profile.brainrots[equippedId]
+		if entry then
+			snapshot = { level = entry.level, xp = entry.xp }
+		end
+	end
+
 	-- Grant the reward exactly once, then persist claim + reward together.
 	local granted = grantQuestReward(player, quest)
 	if not granted then
@@ -132,13 +147,11 @@ local function completeQuest(player, quest)
 		if granted.coins and granted.coins > 0 then
 			Data.addCoins(player, -granted.coins)
 		end
-		if granted.xp and granted.xp > 0 then
-			local equippedId = profile.equippedBrainrot
-			if equippedId then
-				local entry = profile.brainrots and profile.brainrots[equippedId]
-				if entry then
-					entry.xp = math.max(0, (entry.xp or 0) - granted.xp)
-				end
+		if granted.xp and granted.xp > 0 and snapshot and equippedId then
+			local entry = profile.brainrots and profile.brainrots[equippedId]
+			if entry then
+				entry.level = snapshot.level
+				entry.xp = snapshot.xp
 			end
 		end
 		Data.syncProfile(player)

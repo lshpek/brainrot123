@@ -249,7 +249,7 @@ function Hud.start()
 	local autoButton = UI.button({
 		Text = "⚡ Auto: OFF",
 		Size = UDim2.fromOffset(120, 46),
-		LayoutOrder = 6,
+		LayoutOrder = 8,
 		Color = UI.Palette.panelLight,
 		TextColor = UI.Palette.text,
 		Parent = menu,

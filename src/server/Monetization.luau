@@ -142,7 +142,9 @@ local function processReceipt(receiptInfo)
 			profile.receipts[tostring(receiptInfo.PurchaseId)] = nil
 			profile.coins = (profile.coins or 0) - (product.coins or 0)
 			Data.syncProfile(player)
-			warn(`[Monetization] Profile save failed for receipt {receiptInfo.PurchaseId}; not acknowledged, will retry.`)
+			warn(
+				`[Monetization] Profile save failed for receipt {receiptInfo.PurchaseId}; not acknowledged, will retry.`
+			)
 			return Enum.ProductPurchaseDecision.NotProcessedYet
 		end
 	end

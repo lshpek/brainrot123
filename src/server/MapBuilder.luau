@@ -17,6 +17,13 @@ local Config = require(ReplicatedStorage.Shared.Config)
 local ZONE_SIZE = 140
 local WALL_HEIGHT = 24
 
+-- Build a lookup from zone name to its config (powerRequired, multiplier, etc.)
+-- so MapBuilder has a single source of truth from Config.Zones.
+local ZoneConfigByName = {}
+for _, zone in ipairs(Config.Zones) do
+	ZoneConfigByName[zone.name] = zone
+end
+
 local MapBuilder = {}
 
 -- Axis-aligned regions used by Training to validate zone bonuses server-side.
@@ -115,7 +122,13 @@ local function buildWorld(worldIndex: number, layout: { [string]: any }): Folder
 		Material = Enum.Material.SmoothPlastic,
 		Parent = worldFolder,
 	})
-	billboard(sign, layout.name .. "  •  " .. (layout.description or ""), Color3.fromRGB(240, 243, 250), 4, UDim2.fromScale(14, 2))
+	billboard(
+		sign,
+		layout.name .. "  •  " .. (layout.description or ""),
+		Color3.fromRGB(240, 243, 250),
+		4,
+		UDim2.fromScale(14, 2)
+	)
 
 	-- Spawn location.
 	local spawn = buildSpawnLocation(worldFolder, center + layout.spawn, layout.name .. "_Spawn")
@@ -151,9 +164,17 @@ local function buildWorld(worldIndex: number, layout: { [string]: any }): Folder
 		CanCollide = false,
 		Parent = worldFolder,
 	})
-	billboard(arenaMarker, "PvP Arena — " .. layout.name, Color3.fromRGB(240, 243, 250), 6, UDim2.fromScale(layout.arenaRadius * 2 / 10, 2))
+	billboard(
+		arenaMarker,
+		"PvP Arena — " .. layout.name,
+		Color3.fromRGB(240, 243, 250),
+		6,
+		UDim2.fromScale(layout.arenaRadius * 2 / 10, 2)
+	)
 
-	-- Region for Training zone validation.
+	-- Region for Training zone validation. Uses Config.Zones as the single
+	-- source of truth for powerRequired and multiplier.
+	local zoneCfg = ZoneConfigByName[layout.name] or { powerRequired = 0, multiplier = 1 }
 	table.insert(zoneRegions, {
 		minX = centerX - ZONE_SIZE / 2,
 		maxX = centerX + ZONE_SIZE / 2,
@@ -162,6 +183,8 @@ local function buildWorld(worldIndex: number, layout: { [string]: any }): Folder
 		info = {
 			name = layout.name,
 			worldId = layout.id,
+			powerRequired = zoneCfg.powerRequired or 0,
+			multiplier = zoneCfg.multiplier or 1,
 		},
 	})
 
@@ -187,6 +210,11 @@ function MapBuilder.build()
 	map.Name = "Map"
 	map.Parent = workspace
 
+	-- Create ZoneGates folder for client gate system.
+	local zoneGatesFolder = Instance.new("Folder")
+	zoneGatesFolder.Name = "ZoneGates"
+	zoneGatesFolder.Parent = workspace
+
 	local worldHandles = {}
 
 	for index, layout in ipairs(Config.WorldLayouts) do
@@ -195,7 +223,7 @@ function MapBuilder.build()
 		worldHandles[layout.name] = handle
 	end
 
-	-- Connect worlds with paved paths between their spawns.
+	-- Connect worlds with paved paths between their spawns and create gates.
 	local spawnPoints = {}
 	for _, layout in ipairs(Config.WorldLayouts) do
 		table.insert(spawnPoints, worldHandles[layout.id].spawn)
@@ -208,6 +236,7 @@ function MapBuilder.build()
 		if length > 0 then
 			local mid = (from + to) / 2
 			local cf = CFrame.lookAt(mid, to)
+			-- Create the paved path.
 			part({
 				Name = "InterWorldPath_" .. i,
 				Size = Vector3.new(10, 0.6, length),
@@ -216,6 +245,25 @@ function MapBuilder.build()
 				Material = Enum.Material.Concrete,
 				Parent = map,
 			})
+			-- Create a gate at the midpoint.
+			local gate = part({
+				Name = "Gate_" .. tostring(i - 1) .. "_to_" .. tostring(i),
+				Size = Vector3.new(4, 20, 1), -- width, height, thickness
+				CFrame = cf * CFrame.new(0, 10, -0.5), -- lift the gate up by half its height and move it back by half thickness so it's centered on the path.
+				Color = Color3.fromRGB(100, 100, 100),
+				Material = Enum.Material.Metal,
+				Parent = zoneGatesFolder,
+			})
+			-- Add a BillboardGui with a TextLabel for the gate's zone name.
+			local gui, label = billboard(gate, "", Color3.fromRGB(240, 243, 250), 10, UDim2.fromScale(4, 2))
+			label.Text = "" -- Will be set by client based on lock state.
+			-- Set gate attributes using the entering world's config.
+			local enteringLayout = Config.WorldLayouts[i]
+			local enteringZone = ZoneConfigByName[enteringLayout.name]
+			gate:SetAttribute("ZoneName", enteringLayout.name)
+			gate:SetAttribute("PowerRequired", (enteringZone and enteringZone.powerRequired) or 0)
+			gate:SetAttribute("Multiplier", (enteringZone and enteringZone.multiplier) or 1)
+			gate:SetAttribute("VipOnly", false)
 		end
 	end
 

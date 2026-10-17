@@ -15,20 +15,13 @@ local Data
 local lastJump = {} -- [Player] = os.clock() of last accepted jump
 
 local FJ = Config.FartJump
+local FartJumpCurve = require(ReplicatedStorage.Shared.FartJumpCurve)
 
--- Strength -> upward impulse, with diminishing returns past the soft cap and
--- a hard ceiling. Never unbounded regardless of how large power grows.
+-- Server delegates to the shared pure curve (single source of truth, covered by
+-- tests/shared/FartJumpCurve.test.luau). Server stays authoritative: it passes
+-- the server-side power value and ignores all client-supplied magnitudes.
 local function upwardImpulseFor(power: number): number
-	local cfg = FJ
-	local linear = cfg.basePower + power * cfg.powerPerStrength
-	local scaled = linear
-	if power > cfg.strengthSoftCap then
-		-- Apply square-root scaling to the amount above the soft cap.
-		local over = power - cfg.strengthSoftCap
-		local linearAtCap = cfg.basePower + cfg.strengthSoftCap * cfg.powerPerStrength
-		scaled = linearAtCap + math.sqrt(over) * cfg.powerPerStrength * cfg.diminishingFactor
-	end
-	return math.clamp(scaled, 0, cfg.maxUpImpulse)
+	return FartJumpCurve.upwardImpulse(power, FJ)
 end
 
 -- Grounded check: raycast a short distance down from the root part.

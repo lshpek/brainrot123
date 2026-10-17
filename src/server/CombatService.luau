@@ -58,10 +58,13 @@ function CombatService.start(dataService, brainrotService, buildingService, boss
 			local applied = BossService.damageBoss(player, buildingPart, damage)
 			local attackResult = remotes:FindFirstChild("AttackResult")
 			if attackResult then
-				attackResult:FireClient(
-					player,
-					{ destroyed = false, boss = true, health = bossData.health, maxHealth = bossData.maxHealth, applied = applied }
-				)
+				attackResult:FireClient(player, {
+					destroyed = false,
+					boss = true,
+					health = bossData.health,
+					maxHealth = bossData.maxHealth,
+					applied = applied,
+				})
 			end
 			return
 		end

@@ -207,7 +207,7 @@ function AdminService.start(dataService)
 			local root = char and char:FindFirstChild("HumanoidRootPart")
 			if root then
 				local mapFolder = workspace:FindFirstChild("Map")
-				local zoneFolder = mapFolder and mapFolder:FindFirstChild("Beach")
+				local zoneFolder = mapFolder and mapFolder:FindFirstChild("Settlement")
 				if zoneFolder then
 					local BuildingService = require(script.Parent.BuildingService)
 					BuildingService.spawnBuilding("shack", zoneFolder, root.Position + Vector3.new(0, 0, 8))

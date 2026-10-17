@@ -26,3 +26,30 @@ jobs:
         with:
           name: PowerPunchSimulator
           path: FartBrainrotSimulator.rbxl
+
+  lint:
+    name: StyLua + Selene
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: JohnnyMorganz/StyLua@v4
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+          args: --check src tests
+      - name: Selene
+        uses: Roblox/selene-action@v1
+        with:
+          args: --config selene.toml src
+
+  tests:
+    name: Lune unit tests
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install Lune
+        run: |
+          curl -fsSL -o lune.zip https://github.com/lune-org/lune/releases/download/v0.10.4/lune-0.10.4-linux-x86_64.zip
+          unzip -o lune.zip
+          chmod +x lune
+      - name: Run pure-logic tests
+        run: ./lune run tests/test_runner

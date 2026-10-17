@@ -22,18 +22,26 @@ local lastAttack = {} -- [Player] = os.clock()
 
 local CHALLENGE_TTL = 30 -- seconds
 
--- One dedicated arena per world. The local dev world is Settlement; when real
--- Places are configured, WorldService reports the player's current world.
-local ARENAS = {
-	settlement = { center = Vector3.new(0, 0, -50), radius = 30 },
-	village = { center = Vector3.new(0, 0, 260), radius = 30 },
-	city = { center = Vector3.new(140, 0, 0), radius = 30 },
-	megacity = { center = Vector3.new(280, 0, 0), radius = 30 },
-	space_city = { center = Vector3.new(420, 0, 0), radius = 30 },
-}
+-- ============================== ARENA RESOLUTION ==============================
+-- Arena positions are derived from Config.WorldLayouts, which encodes each
+-- world's center (X offset = (index-1) * ZONE_SIZE in MapBuilder) plus its
+-- arenaPosition/arenaRadius. This avoids drift between MapBuilder and PvP.
+-- Fallback arena for when the world layout is not found.
+local FALLBACK_ARENA = { center = Vector3.new(0, 0, -50), radius = 30 }
+local ZONE_SIZE = 140
 
 local function getArena(worldId)
-	return ARENAS[worldId] or ARENAS.settlement
+	local idx = Config.WorldZoneIndex[worldId]
+	if not idx then
+		return FALLBACK_ARENA
+	end
+	local layout = Config.WorldLayouts[idx]
+	if not layout then
+		return FALLBACK_ARENA
+	end
+	local worldX = (idx - 1) * ZONE_SIZE
+	local center = Vector3.new(worldX, 0, 0) + layout.arenaPosition
+	return { center = center, radius = layout.arenaRadius or 30 }
 end
 
 -- Best-effort current world per player. Defaults to Settlement (the local
@@ -159,7 +167,7 @@ function PvPService.start(dataService)
 		targetUserId = tonumber(targetUserId)
 		if not targetUserId then
 			return
-	end
+		end
 		if playerMatch[player] then
 			return -- already in a match
 		end
@@ -236,10 +244,16 @@ function PvPService.start(dataService)
 			update:FireClient(challenger, "started", player.Name)
 			update:FireClient(player, "started", challenger.Name)
 			update:FireClient(challenger, "health", {
-				a = match.healthA, b = match.healthB, maxA = match.maxHealthA, maxB = match.maxHealthB,
+				a = match.healthA,
+				b = match.healthB,
+				maxA = match.maxHealthA,
+				maxB = match.maxHealthB,
 			})
 			update:FireClient(player, "health", {
-				a = match.healthA, b = match.healthB, maxA = match.maxHealthA, maxB = match.maxHealthB,
+				a = match.healthA,
+				b = match.healthB,
+				maxA = match.maxHealthA,
+				maxB = match.maxHealthB,
 			})
 		end
 	end)
