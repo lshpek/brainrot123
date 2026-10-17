@@ -653,18 +653,17 @@ function BuildingService.getBuildingHealth(target: Instance?): (number?, number?
 end
 
 function BuildingService.spawnZoneBuildings(zoneName: string, zoneFolder: Folder)
-	-- Guard against duplicate spawning if this zone is requested again.
-	if spawnedZones[zoneName] then
-		return
-	end
+	-- Legacy compat: spawn buildings for a zone by name.
 	local buildingIds = Config.ZoneBuildings[zoneName]
 	if not buildingIds then
+		return
+	end
+	if spawnedZones[zoneName] then
 		return
 	end
 	spawnedZones[zoneName] = true
 
 	local floor = zoneFolder:FindFirstChild("Floor")
-	-- Floor spans y -4..0, so the walkable ground surface is at the floor's top.
 	local origin = floor and (floor.Position + Vector3.new(0, floor.Size.Y / 2, 0)) or Vector3.new(0, 0, 0)
 
 	local offsets = {
@@ -680,6 +679,30 @@ function BuildingService.spawnZoneBuildings(zoneName: string, zoneFolder: Folder
 	for i, buildingId in ipairs(buildingIds) do
 		local offset = offsets[i] or Vector3.new((i - 1) * 14, 0, 0)
 		buildStructure(zoneFolder, buildingId, origin + offset)
+	end
+end
+
+-- Spawn destructible buildings for a world using its own building distribution.
+-- Positions are spread across the world's floor around its center.
+function BuildingService.spawnWorldBuildings(worldId: string, worldFolder: Folder, center: Vector3)
+	local buildingIds = Config.WorldBuildings and Config.WorldBuildings[worldId]
+	if not buildingIds or #buildingIds == 0 then
+		return
+	end
+	if spawnedZones[worldId .. "_world"] then
+		return
+	end
+	spawnedZones[worldId .. "_world"] = true
+
+	local floor = worldFolder:FindFirstChild("Floor")
+	local origin = floor and (floor.Position + Vector3.new(0, floor.Size.Y / 2, 0)) or center or Vector3.new(0, 0, 0)
+
+	-- Distribute buildings in a rough arc across the world floor.
+	local radius = 40
+	for i, buildingId in ipairs(buildingIds) do
+		local angle = (i - 1) * (math.pi * 2 / #buildingIds)
+		local offset = Vector3.new(math.cos(angle) * radius, 0, math.sin(angle) * radius)
+		buildStructure(worldFolder, buildingId, origin + offset)
 	end
 end
 

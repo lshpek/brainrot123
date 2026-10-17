@@ -14,6 +14,10 @@ local ownerUserId = nil
 local VALID_ROLES = { Owner = true, Admin = true, Moderator = true, Tester = true }
 local ROLE_RANK = { Owner = 4, Admin = 3, Moderator = 2, Tester = 1 }
 
+-- Per-player, per-command rate limits to prevent remote spam.
+local lastAdminCommand = {} -- [Player] = { [command] = os.clock() }
+local ADMIN_COMMAND_COOLDOWN = 1.0 -- seconds between identical commands
+
 local function resolveOwner()
 	local ok, userId = pcall(function()
 		return Players:GetUserIdFromNameAsync("kiill290")
@@ -85,6 +89,19 @@ function AdminService.start(dataService)
 			return
 		end
 		payload = (type(payload) == "table") and payload or {}
+
+		-- Rate-limit identical commands per player to prevent remote spam.
+		local now = os.clock()
+		local playerCmds = lastAdminCommand[player]
+		if not playerCmds then
+			playerCmds = {}
+			lastAdminCommand[player] = playerCmds
+		end
+		local last = playerCmds[command] or 0
+		if now - last < ADMIN_COMMAND_COOLDOWN then
+			return
+		end
+		playerCmds[command] = now
 
 		if command == "diagnostics" then
 			if not hasRole(player, "Tester") then
@@ -282,6 +299,7 @@ function AdminService.start(dataService)
 
 	Players.PlayerRemoving:Connect(function(player)
 		-- sandbox cleanup handled by Data
+		lastAdminCommand[player] = nil
 	end)
 end
 

@@ -63,7 +63,10 @@ function BrainrotService.getEquippedDamage(player: Player): number
 		end
 	end
 	petDamageBonus = math.clamp(petDamageBonus, 0, Config.PetBonusCaps.damage)
-	return Brainrot.totalDamage(config, entry.level, petDamageBonus)
+	local base = Brainrot.totalDamage(config, entry.level, petDamageBonus)
+	-- Role-based mechanical difference (server-computed, never client-trusted).
+	local roleBonus = tonumber(config.roleDamageBonus) or 0
+	return base * (1 + math.clamp(roleBonus, 0, 1))
 end
 
 -- Get the equipped Brainrot info for UI.

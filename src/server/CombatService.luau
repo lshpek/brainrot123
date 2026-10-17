@@ -12,15 +12,17 @@ local CombatService = {}
 local Data
 local BrainrotService
 local BuildingService
+local BossService
 
 -- Track attack remotes per player to prevent duplicate firing.
 local lastAttackRequest = {}
 local lastEquipRequest = {}
 
-function CombatService.start(dataService, brainrotService, buildingService)
+function CombatService.start(dataService, brainrotService, buildingService, bossService)
 	Data = dataService
 	BrainrotService = brainrotService
 	BuildingService = buildingService
+	BossService = bossService
 
 	local remotes = ReplicatedStorage:WaitForChild("Remotes")
 
@@ -50,26 +52,18 @@ function CombatService.start(dataService, brainrotService, buildingService)
 			return
 		end
 
-		-- Boss target?
-		local bossData = nil
-		pcall(function()
-			bossData = require(script.Parent.BossService).resolve(buildingPart)
-		end)
+		-- Boss target? Boss damage validation is centralized in BossService.
+		local bossData = BossService and BossService.resolve(buildingPart)
 		if bossData then
-			local okBoss = false
-			pcall(function()
-				okBoss = require(script.Parent.BossService).damageBoss(player, buildingPart, damage)
-			end)
-			if okBoss then
-				local attackResult = remotes:FindFirstChild("AttackResult")
-				if attackResult then
-					attackResult:FireClient(
-						player,
-						{ destroyed = false, boss = true, health = bossData.health, maxHealth = bossData.maxHealth }
-					)
-				end
-				return
+			local applied = BossService.damageBoss(player, buildingPart, damage)
+			local attackResult = remotes:FindFirstChild("AttackResult")
+			if attackResult then
+				attackResult:FireClient(
+					player,
+					{ destroyed = false, boss = true, health = bossData.health, maxHealth = bossData.maxHealth, applied = applied }
+				)
 			end
+			return
 		end
 
 		-- Validate the player is near the building (range checked in damageBuilding too).

@@ -1,26 +1,25 @@
 -- MapBuilder.luau
--- Builds the entire map from code at server start: zone platforms, training
--- pads, gates, decorations, spawn, and the leaderboard board. No manual Studio
--- editing needed -- tweak Config.Zones and the world rebuilds to match.
+-- Builds five distinct world layouts from Config.WorldLayouts: zone platforms,
+-- district markers, spawn locations, boss districts, dedicated PvP arenas,
+-- destructible buildings, connecting paths and a kill plane. All geometry is
+-- code-generated placeholders pending real imported model integration
+-- (see docs/ASSET_MANIFEST.md).
+--
+-- Each world is its own folder under workspace.Map. World identity is driven
+-- by Config.WorldLayouts / Config.Worlds, never by a hard-coded Settlement
+-- fallback.
 
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local Lighting = game:GetService("Lighting")
 
 local Config = require(ReplicatedStorage.Shared.Config)
-local Formulas = require(ReplicatedStorage.Shared.Formulas)
 
-local ZONE_SIZE = 140 -- each main zone is a ZONE_SIZE x ZONE_SIZE platform
+local ZONE_SIZE = 140
 local WALL_HEIGHT = 24
-local PAD_OFFSETS = {
-	Vector3.new(-38, 0, 28),
-	Vector3.new(0, 0, -38),
-	Vector3.new(38, 0, 28),
-}
 
 local MapBuilder = {}
 
 -- Axis-aligned regions used by Training to validate zone bonuses server-side.
--- Each entry: { minX, maxX, minZ, maxZ, info = {name, powerRequired, multiplier, vipOnly?} }
 local zoneRegions = {}
 
 local function part(props: { [string]: any }): Part
@@ -59,82 +58,114 @@ local function billboard(adornee: BasePart, text: string, color: Color3, offsetY
 	return gui, label
 end
 
-local function buildTrainingPads(
-	parent: Folder,
-	center: Vector3,
-	offsets: { Vector3 },
-	accent: Color3,
-	multiplier: number
-)
-	for _, offset in offsets do
-		local pad = part({
-			Name = "TrainingPad",
-			Shape = Enum.PartType.Block,
-			Size = Vector3.new(16, 1, 16),
-			CFrame = CFrame.new(center + offset + Vector3.new(0, 0.5, 0)),
-			Color = accent,
-			Material = Enum.Material.SmoothPlastic,
-			Parent = parent,
-		})
-		local ring = part({
-			Name = "PadRing",
-			Size = Vector3.new(17, 0.2, 17),
-			CFrame = CFrame.new(center + offset + Vector3.new(0, 0.51, 0)),
-			Color = Color3.new(accent.R * 0.5, accent.G * 0.5, accent.B * 0.5),
-			Material = Enum.Material.SmoothPlastic,
-			Transparency = 0.4,
-			Parent = parent,
-		})
-		billboard(pad, `x{multiplier} 💪`, accent, 4, UDim2.fromScale(8, 2.4))
-	end
-end
-
-local function buildDecorations(parent: Folder, center: Vector3, accent: Color3, seed: number)
-	local rng = Random.new(seed)
-	for _ = 1, 10 do
-		local angle = rng:NextNumber(0, math.pi * 2)
-		local radius = rng:NextNumber(42, 60)
-		local position = center + Vector3.new(math.cos(angle) * radius, 0, math.sin(angle) * radius)
-
-		local rockSize = rng:NextNumber(2, 5)
-		local rock = part({
-			Name = "Rock",
-			Size = Vector3.new(rockSize, rockSize * 0.6, rockSize),
-			CFrame = CFrame.new(position + Vector3.new(0, rockSize * 0.3, 0)),
-			Color = Color3.fromRGB(90, 90, 95),
-			Material = Enum.Material.Rock,
-			Parent = parent,
-		})
-		if rng:NextNumber() > 0.4 then
-			part({
-				Name = "Bush",
-				Size = Vector3.new(3, 2, 3),
-				CFrame = CFrame.new(position + Vector3.new(rng:NextNumber(-2, 2), 1, rng:NextNumber(-2, 2))),
-				Color = Color3.fromRGB(80, 140, 60),
-				Material = Enum.Material.Grass,
-				Parent = parent,
-			})
-		end
-	end
-end
-
--- Builds a paved path connecting two zone centers.
-local function buildPath(from: Vector3, to: Vector3, width: number, parent: Folder)
-	local direction = (to - from)
-	local length = direction.Magnitude
-	if length == 0 then
-		return
-	end
-	local mid = (from + to) / 2
-	local cf = CFrame.lookAt(mid, to)
-	local path = part({
-		Name = "Path",
-		Size = Vector3.new(width, 0.6, length),
-		CFrame = cf * CFrame.new(0, 0.31, 0),
-		Color = Color3.fromRGB(150, 140, 120),
-		Material = Enum.Material.Concrete,
+local function buildDistrictMarker(parent: Folder, center: Vector3, name: string, accent: Color3)
+	local sign = part({
+		Name = "District_" .. name,
+		Size = Vector3.new(12, 4, 0.4),
+		CFrame = CFrame.new(center + Vector3.new(0, 3, 0)),
+		Color = accent,
+		Material = Enum.Material.SmoothPlastic,
 		Parent = parent,
 	})
+	billboard(sign, name, Color3.fromRGB(240, 243, 250), 4, UDim2.fromScale(12, 2))
+end
+
+local function buildSpawnLocation(parent: Folder, position: Vector3, name: string)
+	local spawn = Instance.new("SpawnLocation")
+	spawn.Name = name
+	spawn.Size = Vector3.new(12, 1, 12)
+	spawn.CFrame = CFrame.new(position + Vector3.new(0, 0.5, 0))
+	spawn.Anchored = true
+	spawn.Neutral = true
+	spawn.Duration = 0
+	spawn.Color = Color3.fromRGB(90, 210, 120)
+	spawn.Material = Enum.Material.SmoothPlastic
+	spawn.TopSurface = Enum.SurfaceType.Smooth
+	spawn.Parent = parent
+	return spawn
+end
+
+-- Builds one complete world layout.
+local function buildWorld(worldIndex: number, layout: { [string]: any }): Folder
+	local worldFolder = Instance.new("Folder")
+	worldFolder.Name = layout.name -- e.g. "Settlement", "Village"
+	worldFolder.Parent = workspace:FindFirstChild("Map") or workspace
+
+	local centerX = (worldIndex - 1) * ZONE_SIZE
+	local center = Vector3.new(centerX, 0, 0)
+	local accent = layout.themeColor or Color3.fromRGB(160, 160, 160)
+	local material = layout.themeMaterial or Enum.Material.SmoothPlastic
+
+	-- World floor platform.
+	part({
+		Name = "Floor",
+		Size = Vector3.new(ZONE_SIZE, 4, ZONE_SIZE),
+		CFrame = CFrame.new(centerX, -2, 0),
+		Color = layout.themeColor or Color3.fromRGB(160, 160, 160),
+		Material = material,
+		Parent = worldFolder,
+	})
+
+	-- World name sign at the near edge.
+	local sign = part({
+		Name = "WorldSign",
+		Size = Vector3.new(14, 5, 0.4),
+		CFrame = CFrame.new(centerX, 4, -ZONE_SIZE / 2 - 3),
+		Color = accent,
+		Material = Enum.Material.SmoothPlastic,
+		Parent = worldFolder,
+	})
+	billboard(sign, layout.name .. "  •  " .. (layout.description or ""), Color3.fromRGB(240, 243, 250), 4, UDim2.fromScale(14, 2))
+
+	-- Spawn location.
+	local spawn = buildSpawnLocation(worldFolder, center + layout.spawn, layout.name .. "_Spawn")
+
+	-- District markers.
+	for _, district in ipairs(layout.districts or {}) do
+		buildDistrictMarker(worldFolder, center + district.offset, district.name, accent)
+	end
+
+	-- Boss district marker (distinct visual).
+	local bossPos = center + layout.bossPosition
+	local bossMarker = part({
+		Name = "BossDistrict",
+		Size = Vector3.new(20, 1, 20),
+		CFrame = CFrame.new(bossPos + Vector3.new(0, 0.5, 0)),
+		Color = Color3.fromRGB(235, 87, 87),
+		Material = Enum.Material.Neon,
+		Transparency = 0.5,
+		CanCollide = false,
+		Parent = worldFolder,
+	})
+	billboard(bossMarker, "BOSS: " .. layout.name .. " Boss", Color3.fromRGB(255, 255, 255), 6, UDim2.fromScale(20, 2))
+
+	-- Dedicated PvP arena marker.
+	local arenaPos = center + layout.arenaPosition
+	local arenaMarker = part({
+		Name = "PvPArena",
+		Size = Vector3.new(layout.arenaRadius * 2, 1, layout.arenaRadius * 2),
+		CFrame = CFrame.new(arenaPos + Vector3.new(0, 0.5, 0)),
+		Color = Color3.fromRGB(90, 170, 255),
+		Material = Enum.Material.ForceField,
+		Transparency = 0.6,
+		CanCollide = false,
+		Parent = worldFolder,
+	})
+	billboard(arenaMarker, "PvP Arena — " .. layout.name, Color3.fromRGB(240, 243, 250), 6, UDim2.fromScale(layout.arenaRadius * 2 / 10, 2))
+
+	-- Region for Training zone validation.
+	table.insert(zoneRegions, {
+		minX = centerX - ZONE_SIZE / 2,
+		maxX = centerX + ZONE_SIZE / 2,
+		minZ = -ZONE_SIZE / 2,
+		maxZ = ZONE_SIZE / 2,
+		info = {
+			name = layout.name,
+			worldId = layout.id,
+		},
+	})
+
+	return worldFolder, { spawn = spawn.Position, boss = bossPos, arena = arenaPos }
 end
 
 function MapBuilder.getZoneAt(position: Vector3)
@@ -154,180 +185,55 @@ end
 function MapBuilder.build()
 	local map = Instance.new("Folder")
 	map.Name = "Map"
-	local gates = Instance.new("Folder")
-	gates.Name = "ZoneGates"
+	map.Parent = workspace
 
-	-- ============================== MAIN ZONES ==============================
-	local prevCenter = Vector3.new(0, 0, 0)
+	local worldHandles = {}
 
-	for index, zone in Config.Zones do
-		local centerX = (index - 1) * ZONE_SIZE
-		local center = Vector3.new(centerX, 0, 0)
-		local zoneFolder = Instance.new("Folder")
-		zoneFolder.Name = zone.name
-		zoneFolder.Parent = map
-
-		-- Zone floor platform.
-		part({
-			Name = "Floor",
-			Size = Vector3.new(ZONE_SIZE, 4, ZONE_SIZE),
-			CFrame = CFrame.new(centerX, -2, 0),
-			Color = zone.floorColor,
-			Material = zone.floorMaterial,
-			Parent = zoneFolder,
-		})
-
-		-- Zone border rim.
-		part({
-			Name = "Rim",
-			Size = Vector3.new(ZONE_SIZE + 2, 0.4, ZONE_SIZE + 2),
-			CFrame = CFrame.new(centerX, -1.8, 0),
-			Color = zone.accentColor,
-			Material = Enum.Material.SmoothPlastic,
-			Transparency = 0.6,
-			Parent = zoneFolder,
-		})
-
-		-- Zone name sign at the near edge.
-		local sign = part({
-			Name = "ZoneSign",
-			Size = Vector3.new(10, 4, 0.4),
-			CFrame = CFrame.new(centerX, 3, -ZONE_SIZE / 2 - 2),
-			Color = zone.accentColor,
-			Material = Enum.Material.SmoothPlastic,
-			Parent = zoneFolder,
-		})
-		billboard(sign, zone.name, Color3.fromRGB(240, 243, 250), 4, UDim2.fromScale(10, 2))
-
-		buildTrainingPads(zoneFolder, center, PAD_OFFSETS, zone.accentColor, zone.multiplier)
-		buildDecorations(zoneFolder, center, zone.accentColor, index * 7919)
-
-		-- Path from previous zone to this one.
-		if index > 1 then
-			buildPath(prevCenter, center, 14, map)
-		end
-
-		table.insert(zoneRegions, {
-			minX = centerX - ZONE_SIZE / 2,
-			maxX = centerX + ZONE_SIZE / 2,
-			minZ = -ZONE_SIZE / 2,
-			maxZ = ZONE_SIZE / 2,
-			info = {
-				name = zone.name,
-				powerRequired = zone.powerRequired,
-				multiplier = zone.multiplier,
-			},
-		})
-
-		-- Gate wall on the western edge of every zone after the first.
-		if index > 1 then
-			local gate = part({
-				Name = zone.name .. "Gate",
-				Size = Vector3.new(2, WALL_HEIGHT, ZONE_SIZE),
-				CFrame = CFrame.new(centerX - ZONE_SIZE / 2, WALL_HEIGHT / 2, 0),
-				Color = Color3.fromRGB(235, 87, 87),
-				Material = Enum.Material.SmoothPlastic,
-				Transparency = 0.3,
-				Parent = gates,
-			})
-			gate:SetAttribute("PowerRequired", zone.powerRequired)
-			gate:SetAttribute("ZoneName", zone.name)
-			gate:SetAttribute("VipOnly", false)
-			billboard(
-				gate,
-				`{zone.name} — {Formulas.abbreviate(zone.powerRequired)} Power`,
-				Color3.fromRGB(255, 255, 255),
-				WALL_HEIGHT / 2 + 4,
-				UDim2.fromScale(24, 4)
-			)
-		end
-
-		prevCenter = center
+	for index, layout in ipairs(Config.WorldLayouts) do
+		local worldFolder, handle = buildWorld(index, layout)
+		worldHandles[layout.id] = handle
+		worldHandles[layout.name] = handle
 	end
 
-	-- ============================== VIP ISLAND ==============================
-	local vip = Config.VipZone
-	local vipFolder = Instance.new("Folder")
-	vipFolder.Name = "VipIsland"
-	vipFolder.Parent = map
+	-- Connect worlds with paved paths between their spawns.
+	local spawnPoints = {}
+	for _, layout in ipairs(Config.WorldLayouts) do
+		table.insert(spawnPoints, worldHandles[layout.id].spawn)
+	end
+	for i = 2, #spawnPoints do
+		local from = spawnPoints[i - 1]
+		local to = spawnPoints[i]
+		local direction = (to - from)
+		local length = direction.Magnitude
+		if length > 0 then
+			local mid = (from + to) / 2
+			local cf = CFrame.lookAt(mid, to)
+			part({
+				Name = "InterWorldPath_" .. i,
+				Size = Vector3.new(10, 0.6, length),
+				CFrame = cf * CFrame.new(0, 0.31, 0),
+				Color = Color3.fromRGB(150, 140, 120),
+				Material = Enum.Material.Concrete,
+				Parent = map,
+			})
+		end
+	end
 
-	part({
-		Name = "Floor",
-		Size = Vector3.new(100, 4, 100),
-		CFrame = CFrame.new(0, -2, -170),
-		Color = vip.floorColor,
-		Material = vip.floorMaterial,
-		Parent = vipFolder,
-	})
-	part({
-		Name = "Bridge",
-		Size = Vector3.new(14, 4, 50),
-		CFrame = CFrame.new(0, -2, -95),
-		Color = vip.floorColor,
-		Material = Enum.Material.WoodPlanks,
-		Parent = vipFolder,
-	})
-
-	local vipPadOffsets = {
-		Vector3.new(-28, 0, 20),
-		Vector3.new(0, 0, -28),
-		Vector3.new(28, 0, 20),
-	}
-	buildTrainingPads(vipFolder, Vector3.new(0, 0, -170), vipPadOffsets, vip.accentColor, vip.multiplier)
-	buildDecorations(vipFolder, Vector3.new(0, 0, -170), vip.accentColor, 424242)
-
-	table.insert(zoneRegions, {
-		minX = -50,
-		maxX = 50,
-		minZ = -220,
-		maxZ = -120,
-		info = {
-			name = vip.name,
-			powerRequired = 0,
-			multiplier = vip.multiplier,
-			vipOnly = true,
-		},
-	})
-
-	local vipGate = part({
-		Name = "VipGate",
-		Size = Vector3.new(14, WALL_HEIGHT, 2),
-		CFrame = CFrame.new(0, WALL_HEIGHT / 2, -95),
-		Color = Color3.fromRGB(255, 215, 0),
-		Material = Enum.Material.ForceField,
-		Transparency = 0.2,
-		Parent = gates,
-	})
-	vipGate:SetAttribute("PowerRequired", 0)
-	vipGate:SetAttribute("ZoneName", vip.name)
-	vipGate:SetAttribute("VipOnly", true)
-	billboard(vipGate, "👑 VIP Island — Gamepass", vip.accentColor, WALL_HEIGHT / 2 + 4, UDim2.fromScale(24, 4))
-
-	-- ============================== SPAWN & EXTRAS ==============================
-	local spawn = Instance.new("SpawnLocation")
-	spawn.Size = Vector3.new(12, 1, 12)
-	spawn.CFrame = CFrame.new(0, 0.5, 52)
-	spawn.Anchored = true
-	spawn.Neutral = true
-	spawn.Duration = 0
-	spawn.Color = Color3.fromRGB(250, 250, 250)
-	spawn.Material = Enum.Material.SmoothPlastic
-	spawn.TopSurface = Enum.SurfaceType.Smooth
-	spawn.Parent = map
-
+	-- Leaderboard board near the first world's spawn.
+	local firstSpawn = worldHandles[Config.WorldLayouts[1].id].spawn
 	local board = part({
 		Name = "LeaderboardBoard",
 		Size = Vector3.new(26, 14, 2),
-		CFrame = CFrame.new(0, 9, 66),
+		CFrame = CFrame.new(firstSpawn.X, 9, firstSpawn.Z + 12),
 		Color = Color3.fromRGB(34, 39, 54),
 		Material = Enum.Material.SmoothPlastic,
 		Parent = map,
 	})
 
-	-- Fell off the map? Fast respawn instead of a long fall to the void.
+	-- Kill plane: fast respawn instead of a long fall to the void.
 	local killPlane = part({
 		Name = "KillPlane",
-		Size = Vector3.new(4000, 1, 4000),
+		Size = Vector3.new(6000, 1, 6000),
 		CFrame = CFrame.new(200, -45, 0),
 		Transparency = 1,
 		CanCollide = false,
@@ -349,10 +255,7 @@ function MapBuilder.build()
 	bloom.Threshold = 1.2
 	bloom.Parent = Lighting
 
-	map.Parent = workspace
-	gates.Parent = workspace
-
-	return { leaderboardPart = board }
+	return { worldHandles = worldHandles, leaderboardPart = board }
 end
 
 return MapBuilder

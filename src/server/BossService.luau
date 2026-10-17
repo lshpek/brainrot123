@@ -1,5 +1,10 @@
 -- BossService.luau
 -- Server-authoritative boss encounters.
+--
+-- BOSS DAMAGE VALIDATION IS CENTRALIZED HERE: `damageBoss(player, target,
+-- damageAmount)` is the only path that can reduce boss health. Both the
+-- `BossAttack` remote and the building `Attack` remote route through it, so no
+-- combat path bypasses range, cooldown, aliveness, or contribution checks.
 
 local Players = game:GetService("Players")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
@@ -9,8 +14,13 @@ local Config = require(ReplicatedStorage.Shared.Config)
 local BossService = {}
 
 local Data
+local BrainrotService
+
 local bosses = {} -- instance -> bossData
-local lastAttack = {}
+local lastAttack = {} -- [Player] = os.clock() of last accepted boss attack
+
+local BOSS_ATTACK_RANGE = 30
+local BOSS_ATTACK_COOLDOWN = 0.6
 
 local function getBossConfig(bossId)
 	for _, b in ipairs(Config.Bosses) do
@@ -56,34 +66,43 @@ local function spawnBoss(bossConfig, position, parent)
 	body.Anchored = true
 	body.Color = bossConfig.color or Color3.fromRGB(200, 80, 80)
 	body.Material = Enum.Material.SmoothPlastic
+	body.CanCollide = false
 	body.Parent = model
 	model.PrimaryPart = body
 
-	-- Health bar
+	-- Health bar hosted on the body part (clients click/resolve via this).
 	local gui = Instance.new("BillboardGui")
 	gui.Name = "HealthBar"
 	gui.Adornee = body
-	gui.Size = UDim2.fromOffset(200, 40)
-	gui.StudsOffsetWorldSpace = Vector3.new(0, size.Y / 2 + 2, 0)
+	gui.Size = UDim2.fromOffset(220, 44)
+	gui.StudsOffsetWorldSpace = Vector3.new(0, size.Y / 2 + 2.5, 0)
 	gui.AlwaysOnTop = true
+	gui.MaxDistance = 200
+	gui.LightInfluence = 0
 	local back = Instance.new("Frame")
-	back.Size = UDim2.fromOffset(200, 16)
-	back.BackgroundColor3 = Color3.fromRGB(30, 30, 30)
+	back.Name = "Back"
+	back.Size = UDim2.fromOffset(220, 18)
+	back.BackgroundColor3 = Color3.fromRGB(30, 30, 34)
+	back.BorderSizePixel = 0
 	back.Parent = gui
-	Instance.new("UICorner", back).CornerRadius = UDim.new(0, 4)
+	Instance.new("UICorner", back).CornerRadius = UDim.new(0, 6)
 	local fill = Instance.new("Frame")
+	fill.Name = "Fill"
 	fill.Size = UDim2.fromScale(1, 1)
 	fill.BackgroundColor3 = Color3.fromRGB(220, 60, 60)
+	fill.BorderSizePixel = 0
 	fill.Parent = back
-	Instance.new("UICorner", fill).CornerRadius = UDim.new(0, 4)
+	Instance.new("UICorner", fill).CornerRadius = UDim.new(0, 6)
 	local label = Instance.new("TextLabel")
-	label.Size = UDim2.fromOffset(200, 20)
-	label.Position = UDim2.fromOffset(0, 18)
+	label.Name = "Label"
+	label.Size = UDim2.fromOffset(220, 22)
+	label.Position = UDim2.fromOffset(0, 20)
 	label.BackgroundTransparency = 1
 	label.Text = bossConfig.name
 	label.TextColor3 = Color3.fromRGB(255, 255, 255)
 	label.Font = Enum.Font.FredokaOne
 	label.TextScaled = true
+	label.TextStrokeTransparency = 0.4
 	label.Parent = gui
 	gui.Parent = body
 
@@ -99,6 +118,7 @@ local function spawnBoss(bossConfig, position, parent)
 		dead = false,
 		deadUntil = 0,
 		contributions = {},
+		lastTelegraph = 0,
 	}
 	bosses[model] = data
 	bosses[body] = data
@@ -116,6 +136,34 @@ local function spawnBoss(bossConfig, position, parent)
 	return model, data
 end
 
+local function rewardContributors(data)
+	for userId in pairs(data.contributions) do
+		local player = Players:GetPlayerByUserId(userId)
+		if player then
+			local profile = Data and Data.get(player)
+			if profile then
+				local rewardCoins = data.config.rewardCoins or 0
+				local rewardXp = data.config.rewardXp or 0
+				if rewardCoins > 0 then
+					Data.addCoins(player, rewardCoins)
+				end
+				if rewardXp > 0 and BrainrotService and BrainrotService.addXpToEquipped then
+					BrainrotService.addXpToEquipped(player, rewardXp)
+				end
+			end
+			local remotes = ReplicatedStorage:FindFirstChild("Remotes")
+			local notify = remotes and remotes:FindFirstChild("Notify")
+			if notify then
+				notify:FireClient(player, "success", "Defeated " .. data.config.name .. "!")
+			end
+			local bossUpdate = remotes and remotes:FindFirstChild("BossUpdate")
+			if bossUpdate then
+				bossUpdate:FireClient(player, "defeated", data.bossId)
+			end
+		end
+	end
+end
+
 local function destroyBoss(data)
 	if data.dead then
 		return
@@ -125,31 +173,7 @@ local function destroyBoss(data)
 	data.health = 0
 	data.barFill.Size = UDim2.fromScale(0, 1)
 	data.label.Text = data.config.name .. " (defeated)"
-	-- Reward contributors once.
-	for userId, contributed in pairs(data.contributions) do
-		if contributed then
-			local player = Players:GetPlayerByUserId(userId)
-			if player then
-				local profile = Data and Data.get(player)
-				if profile then
-					Data.addCoins(player, data.config.rewardCoins)
-					local bs = nil
-					pcall(function()
-						bs = require(script.Parent.BrainrotService)
-					end)
-					if bs and bs.addXpToEquipped then
-						bs.addXpToEquipped(player, data.config.rewardXp)
-					end
-				end
-				local remotes = ReplicatedStorage:FindFirstChild("Remotes")
-				local notify = remotes and remotes:FindFirstChild("Notify")
-				if notify then
-					notify:FireClient(player, "success", "Defeated " .. data.config.name .. "!")
-				end
-			end
-		end
-	end
-	-- hide model
+	rewardContributors(data)
 	for _, p in data.model:GetDescendants() do
 		if p:IsA("BasePart") then
 			p.Transparency = 1
@@ -163,19 +187,73 @@ local function destroyBoss(data)
 		data.dead = false
 		data.health = data.maxHealth
 		data.contributions = {}
+		data.barFill.Size = UDim2.fromScale(1, 1)
+		data.label.Text = data.config.name
 		for _, p in data.model:GetDescendants() do
 			if p:IsA("BasePart") then
 				p.Transparency = 0
 				p.CanCollide = true
 			end
 		end
-		data.barFill.Size = UDim2.fromScale(1, 1)
-		data.label.Text = data.config.name
 	end)
 end
 
-function BossService.start(dataService)
+-- Central, validated boss damage. damageAmount is always computed server-side
+-- (never trusted from the client). Returns true if damage was applied.
+function BossService.damageBoss(player, target, damageAmount)
+	if type(damageAmount) ~= "number" or damageAmount <= 0 then
+		return false
+	end
+	local data = resolve(target)
+	if not data or data.dead then
+		return false
+	end
+	-- Range check from the attacker's actual character position.
+	local character = player.Character
+	local root = character and character:FindFirstChild("HumanoidRootPart")
+	if not root then
+		return false
+	end
+	local hitPart = (typeof(target) == "Instance" and target:IsA("BasePart")) and target or data.body
+	if not hitPart or not hitPart.Parent then
+		return false
+	end
+	if (root.Position - hitPart.Position).Magnitude > BOSS_ATTACK_RANGE then
+		return false
+	end
+	-- Cooldown / anti-spam.
+	local now = os.clock()
+	if now - (lastAttack[player] or 0) < BOSS_ATTACK_COOLDOWN then
+		return false
+	end
+	lastAttack[player] = now
+
+	data.health -= damageAmount
+	if data.health < 0 then
+		data.health = 0
+	end
+	data.barFill.Size = UDim2.fromScale(data.health / data.maxHealth, 1)
+	data.contributions[player.UserId] = true
+
+	local remotes = ReplicatedStorage:FindFirstChild("Remotes")
+	local bossUpdate = remotes and remotes:FindFirstChild("BossUpdate")
+	if bossUpdate then
+		bossUpdate:FireClient(player, "health", {
+			bossId = data.bossId,
+			health = data.health,
+			maxHealth = data.maxHealth,
+		})
+	end
+
+	if data.health <= 0 then
+		destroyBoss(data)
+	end
+	return true
+end
+
+function BossService.start(dataService, brainrotService)
 	Data = dataService
+	BrainrotService = brainrotService
 	local remotes = ReplicatedStorage:WaitForChild("Remotes")
 	local bossRemote = remotes:FindFirstChild("BossAttack")
 	if not bossRemote then
@@ -188,42 +266,18 @@ function BossService.start(dataService)
 		if typeof(target) ~= "Instance" or not target:IsA("BasePart") then
 			return
 		end
-		local data = resolve(target)
-		if not data or data.dead then
-			return
-		end
-		-- range check
-		local character = player.Character
-		local root = character and character:FindFirstChild("HumanoidRootPart")
-		if not root then
-			return
-		end
-		if (root.Position - target.Position).Magnitude > 30 then
-			return
-		end
-		-- cooldown
-		local now = os.clock()
-		if now - (lastAttack[player] or 0) < 0.6 then
-			return
-		end
-		lastAttack[player] = now
-
 		local bs = nil
-		pcall(function()
+		local okB, resB = pcall(function()
 			bs = require(script.Parent.BrainrotService)
 		end)
-		local damage = bs and bs.getEquippedDamage(player) or 10
-		data.health -= damage
-		if data.health < 0 then
-			data.health = 0
+		local damage = 10
+		if okB and bs and bs.getEquippedDamage then
+			damage = bs.getEquippedDamage(player)
 		end
-		data.barFill.Size = UDim2.fromScale(data.health / data.maxHealth, 1)
-		-- track contribution
-		local uid = player.UserId
-		data.contributions[uid] = true
-		if data.health <= 0 then
-			destroyBoss(data)
+		if damage <= 0 then
+			return
 		end
+		BossService.damageBoss(player, target, damage)
 	end)
 
 	Players.PlayerRemoving:Connect(function(player)
@@ -243,21 +297,19 @@ function BossService.resolve(target)
 	return resolve(target)
 end
 
-function BossService.damageBoss(player, target, damage)
-	local data = resolve(target)
-	if not data or data.dead then
-		return false
+function BossService.getBoss(bossId)
+	local cfg = getBossConfig(bossId)
+	if not cfg then
+		return nil
 	end
-	data.health -= damage
-	if data.health < 0 then
-		data.health = 0
-	end
-	data.barFill.Size = UDim2.fromScale(data.health / data.maxHealth, 1)
-	data.contributions[player.UserId] = true
-	if data.health <= 0 then
-		destroyBoss(data)
-	end
-	return true
+	return {
+		bossId = cfg.id,
+		name = cfg.name,
+		world = cfg.world,
+		maxHealth = cfg.maxHealth,
+		rewardCoins = cfg.rewardCoins,
+		rewardXp = cfg.rewardXp,
+	}
 end
 
 return BossService

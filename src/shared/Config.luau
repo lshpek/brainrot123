@@ -135,6 +135,8 @@ Config.Brainrots = {
 		xpPerLevel = 100,
 		xpGrowth = 1.5,
 		damagePerLevel = 2,
+		role = "Balanced",
+		roleDamageBonus = 0.00,
 		color = Color3.fromRGB(160, 160, 160),
 		emoji = "💨",
 		description = "A smelly starter with modest punch power.",
@@ -148,6 +150,8 @@ Config.Brainrots = {
 		xpPerLevel = 150,
 		xpGrowth = 1.55,
 		damagePerLevel = 4,
+		role = "Combo",
+		roleDamageBonus = 0.10,
 		color = Color3.fromRGB(60, 130, 255),
 		emoji = "📺",
 		description = "Camera-headed warrior, faster and harder-hitting.",
@@ -161,6 +165,8 @@ Config.Brainrots = {
 		xpPerLevel = 250,
 		xpGrowth = 1.6,
 		damagePerLevel = 7,
+		role = "Area",
+		roleDamageBonus = 0.00,
 		color = Color3.fromRGB(160, 60, 255),
 		emoji = "😬",
 		description = "Purple powerhouse with devastating area attacks.",
@@ -174,6 +180,8 @@ Config.Brainrots = {
 		xpPerLevel = 400,
 		xpGrowth = 1.7,
 		damagePerLevel = 12,
+		role = "Heavy",
+		roleDamageBonus = 0.25,
 		color = Color3.fromRGB(255, 215, 0),
 		emoji = "🐺",
 		description = "Lone wolf striker, massive single-target damage.",
@@ -187,6 +195,8 @@ Config.Brainrots = {
 		xpPerLevel = 500,
 		xpGrowth = 1.75,
 		damagePerLevel = 15,
+		role = "Tank",
+		roleDamageBonus = 0.00,
 		color = Color3.fromRGB(0, 255, 100),
 		emoji = "🧟",
 		description = "Titan of destruction, slow but unstoppable.",
@@ -200,6 +210,8 @@ Config.Brainrots = {
 		xpPerLevel = 800,
 		xpGrowth = 1.8,
 		damagePerLevel = 22,
+		role = "Support",
+		roleDamageBonus = 0.00,
 		color = Color3.fromRGB(255, 0, 120),
 		emoji = "🤑",
 		description = "The ultimate brainrot. Earns bonus coins too.",
@@ -210,6 +222,78 @@ Config.Brainrots = {
 Config.BrainrotById = {}
 for i, b in ipairs(Config.Brainrots) do
 	Config.BrainrotById[b.id] = i
+end
+
+-- ============================== SKINS (COSMETICS) ==============================
+-- Skins visibly change a Brainrot's appearance (color / material / effect).
+-- A skin is tied to a specific Brainrot id. Ownership and equipped state are
+-- server-owned; rarity labels are presentation only, never a security boundary.
+-- Visual model integration is pending real asset import (docs/ASSET_MANIFEST.md).
+
+Config.Skins = {
+	{
+		id = "toxic_titan_default",
+		name = "Standard",
+		brainrotId = "toxic_titan",
+		rarity = "Common",
+		color = Color3.fromRGB(160, 160, 160),
+		material = Enum.Material.Plastic,
+		ownedByDefault = true,
+		description = "The classic Toxic Titan look.",
+	},
+	{
+		id = "toxic_titan_neo",
+		name = "Neon Sludge",
+		brainrotId = "toxic_titan",
+		rarity = "Rare",
+		color = Color3.fromRGB(0, 255, 120),
+		material = Enum.Material.Neon,
+		ownedByDefault = false,
+		description = "Glowing green variant.",
+	},
+	{
+		id = "skibidi_slayer_default",
+		name = "Standard",
+		brainrotId = "skibidi_slayer",
+		rarity = "Common",
+		color = Color3.fromRGB(60, 130, 255),
+		material = Enum.Material.Plastic,
+		ownedByDefault = true,
+		description = "Classic Skibidi Slayer.",
+	},
+	{
+		id = "sigma_smasher_default",
+		name = "Standard",
+		brainrotId = "sigma_smasher",
+		rarity = "Common",
+		color = Color3.fromRGB(255, 215, 0),
+		material = Enum.Material.Plastic,
+		ownedByDefault = true,
+		description = "Classic Sigma Smasher.",
+	},
+	{
+		id = "meme_mogul_gold",
+		name = "Gold Plated",
+		brainrotId = "meme_mogul",
+		rarity = "Epic",
+		color = Color3.fromRGB(255, 215, 0),
+		material = Enum.Material.Metal,
+		ownedByDefault = false,
+		description = "Gilded Meme Mogul.",
+	},
+}
+
+Config.SkinById = {}
+for _, s in ipairs(Config.Skins) do
+	Config.SkinById[s.id] = s
+end
+-- Index skins by brainrotId for the collection UI.
+Config.SkinsByBrainrot = {}
+for _, s in ipairs(Config.Skins) do
+	if not Config.SkinsByBrainrot[s.brainrotId] then
+		Config.SkinsByBrainrot[s.brainrotId] = {}
+	end
+	table.insert(Config.SkinsByBrainrot[s.brainrotId], s)
 end
 
 -- How much XP a destroyed building grants, scaled by zone.
@@ -609,4 +693,134 @@ Config.Worlds = {
 Config.WorldById = {}
 for i, w in ipairs(Config.Worlds) do
 	Config.WorldById[w.id] = i
+end
+
+-- ============================== WORLD LAYOUTS ==============================
+-- One distinct layout per world. Positions are in studs relative to each
+-- world's zone center (X = (index-1) * ZONE_SIZE in MapBuilder). These are
+-- code-generated placeholders until real imported models are integrated.
+-- Each world keeps its own spawn, boss district, dedicated PvP arena and
+-- building distribution so worlds never silently fall back to Settlement.
+
+Config.WorldLayouts = {
+	{
+		id = "settlement",
+		name = "Settlement",
+		themeColor = Color3.fromRGB(238, 214, 160),
+		themeMaterial = Enum.Material.Sand,
+		spawn = Vector3.new(0, 0.5, 52),
+		bossPosition = Vector3.new(0, 0, 80),
+		bossId = "settlement_boss",
+		arenaPosition = Vector3.new(0, 0, -50),
+		arenaRadius = 30,
+		districts = {
+			{ name = "Spawn Square", offset = Vector3.new(0, 0, 40) },
+			{ name = "Main Street", offset = Vector3.new(0, 0, 0) },
+			{ name = "Residential Block", offset = Vector3.new(-40, 0, 0) },
+			{ name = "Construction Yard", offset = Vector3.new(40, 0, 0) },
+			{ name = "Park and Rooftop Route", offset = Vector3.new(0, 0, -40) },
+			{ name = "Boss District", offset = Vector3.new(0, 0, 80) },
+		},
+		buildings = { "mailbox", "fence", "shack", "house" },
+	},
+	{
+		id = "village",
+		name = "Village",
+		themeColor = Color3.fromRGB(140, 180, 100),
+		themeMaterial = Enum.Material.Grass,
+		spawn = Vector3.new(140, 0.5, 40),
+		bossPosition = Vector3.new(140, 0, 80),
+		bossId = "village_boss",
+		arenaPosition = Vector3.new(140, 0, -50),
+		arenaRadius = 30,
+		districts = {
+			{ name = "Market", offset = Vector3.new(0, 0, 40) },
+			{ name = "Farms and Crop Fields", offset = Vector3.new(-50, 0, 0) },
+			{ name = "Windmill Hill", offset = Vector3.new(50, 0, -20) },
+			{ name = "Waterway and Bridges", offset = Vector3.new(0, 0, -40) },
+			{ name = "Barn Boss District", offset = Vector3.new(0, 0, 80) },
+		},
+		buildings = { "shack", "house", "fence" },
+	},
+	{
+		id = "city",
+		name = "City",
+		themeColor = Color3.fromRGB(112, 112, 118),
+		themeMaterial = Enum.Material.Concrete,
+		spawn = Vector3.new(280, 0.5, 40),
+		bossPosition = Vector3.new(280, 0, 90),
+		bossId = "city_boss",
+		arenaPosition = Vector3.new(280, 0, -60),
+		arenaRadius = 30,
+		districts = {
+			{ name = "Central Plaza", offset = Vector3.new(0, 0, 40) },
+			{ name = "Commercial District", offset = Vector3.new(-50, 0, 0) },
+			{ name = "Residential Towers", offset = Vector3.new(50, 0, 0) },
+			{ name = "Parking Complex", offset = Vector3.new(0, 0, -40) },
+			{ name = "Construction District", offset = Vector3.new(0, 0, -90) },
+			{ name = "Boss District", offset = Vector3.new(0, 0, 90) },
+		},
+		buildings = { "house", "town_hall", "shack" },
+	},
+	{
+		id = "megacity",
+		name = "Megacity",
+		themeColor = Color3.fromRGB(60, 60, 80),
+		themeMaterial = Enum.Material.Slate,
+		spawn = Vector3.new(420, 0.5, 40),
+		bossPosition = Vector3.new(420, 0, 100),
+		bossId = "megacity_boss",
+		arenaPosition = Vector3.new(420, 0, -70),
+		arenaRadius = 30,
+		districts = {
+			{ name = "Central Skyline", offset = Vector3.new(0, 0, 40) },
+			{ name = "Financial District", offset = Vector3.new(-60, 0, 0) },
+			{ name = "Elevated Transit", offset = Vector3.new(60, 0, -30) },
+			{ name = "Energy Infrastructure", offset = Vector3.new(0, 0, -80) },
+			{ name = "Entertainment Complex", offset = Vector3.new(60, 0, 40) },
+			{ name = "Boss District", offset = Vector3.new(0, 0, 100) },
+		},
+		buildings = { "town_hall", "house" },
+	},
+	{
+		id = "space_city",
+		name = "Space City",
+		themeColor = Color3.fromRGB(42, 38, 62),
+		themeMaterial = Enum.Material.Slate,
+		spawn = Vector3.new(560, 0.5, 40),
+		bossPosition = Vector3.new(560, 0, 110),
+		bossId = "space_city_boss",
+		arenaPosition = Vector3.new(560, 0, -80),
+		arenaRadius = 30,
+		districts = {
+			{ name = "Orbital Arrival", offset = Vector3.new(0, 0, 40) },
+			{ name = "Alien Residential District", offset = Vector3.new(-60, 0, 0) },
+			{ name = "Gravity Research Facility", offset = Vector3.new(60, 0, -40) },
+			{ name = "Floating Platform Network", offset = Vector3.new(0, 0, -100) },
+			{ name = "Energy Core District", offset = Vector3.new(0, 0, 110) },
+		},
+		buildings = { "town_hall" },
+	},
+}
+
+-- World unlock thresholds (lifetime rebirths) are authoritative on the server.
+-- These mirror Config.Worlds.rebirthRequired and are validated by Data.isWorldUnlocked.
+Config.WorldUnlockThresholds = {
+	settlement = 0,
+	village = 10,
+	city = 25,
+	megacity = 50,
+	space_city = 100,
+}
+
+-- Map each world layout to its zone region (used by Training zone validation).
+Config.WorldZoneIndex = {}
+for i, layout in ipairs(Config.WorldLayouts) do
+	Config.WorldZoneIndex[layout.id] = i
+end
+
+-- Building distribution per world (arena/boss buildings excluded).
+Config.WorldBuildings = {}
+for _, layout in ipairs(Config.WorldLayouts) do
+	Config.WorldBuildings[layout.id] = layout.buildings
 end

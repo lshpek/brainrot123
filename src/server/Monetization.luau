@@ -102,6 +102,12 @@ local function processReceipt(receiptInfo)
 	end
 	local profile = Data.get(player)
 
+	-- Sandbox: never grant real Robux purchases into the isolated test profile.
+	if Data.isSandbox(player) then
+		warn(`[Monetization] Ignoring receipt {receiptInfo.PurchaseId} for sandbox player {player.Name}`)
+		return Enum.ProductPurchaseDecision.PurchaseGranted
+	end
+
 	-- Recovery: if a previous attempt recorded the receipt in the profile but
 	-- failed to mark the receipt store, do not grant again.
 	if profile.receipts and profile.receipts[tostring(receiptInfo.PurchaseId)] then
@@ -111,18 +117,19 @@ local function processReceipt(receiptInfo)
 
 	for _, product in Config.DevProducts do
 		if product.id == receiptInfo.ProductId and product.id ~= 0 then
-			-- Grant to the in-memory profile and record the receipt in the same
-			-- profile record, then durably save before acknowledging.
-			profile.coins = (profile.coins or 0) + (product.coins or 0)
+			-- Durable grant: record the receipt and add coins in the profile,
+			-- then save in ONE UpdateAsync. Only acknowledge once the save is
+			-- durable. The receipt store marker is written only after a
+			-- successful save so a failed save is never acknowledged as granted.
 			if not profile.receipts then
 				profile.receipts = {}
 			end
 			profile.receipts[tostring(receiptInfo.PurchaseId)] = true
+			profile.coins = (profile.coins or 0) + (product.coins or 0)
 			Data.syncProfile(player)
 			local saved = Data.save(player)
-			-- Best-effort durable marker in the independent receipt store.
-			markReceiptGranted(receiptInfo.PurchaseId)
 			if saved then
+				markReceiptGranted(receiptInfo.PurchaseId)
 				local notify = ReplicatedStorage:FindFirstChild("Remotes")
 				notify = notify and notify:FindFirstChild("Notify")
 				if notify then
@@ -130,8 +137,12 @@ local function processReceipt(receiptInfo)
 				end
 				return Enum.ProductPurchaseDecision.PurchaseGranted
 			end
-			-- Profile save failed: ask Roblox to retry later. The in-memory
-			-- receipt record prevents a duplicate grant within this session.
+			-- Save failed: roll back the in-memory grant so a Roblox retry does
+			-- not duplicate coins, and do NOT acknowledge (Roblox retries).
+			profile.receipts[tostring(receiptInfo.PurchaseId)] = nil
+			profile.coins = (profile.coins or 0) - (product.coins or 0)
+			Data.syncProfile(player)
+			warn(`[Monetization] Profile save failed for receipt {receiptInfo.PurchaseId}; not acknowledged, will retry.`)
 			return Enum.ProductPurchaseDecision.NotProcessedYet
 		end
 	end

@@ -1,5 +1,11 @@
 -- PvPService.luau
 -- Server-authoritative 1v1 PvP matches.
+--
+-- MATCH SECURITY:
+--   * challenges expire, self-challenge and multi-match are rejected
+--   * a match binds both participants on the server
+--   * attacks validate match membership, opponent identity, range, state and cooldown
+--   * rewards are granted exactly once to the winner; disconnect/loss cleans up
 
 local Players = game:GetService("Players")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
@@ -11,30 +17,57 @@ local PvPService = {}
 local Data
 local matches = {} -- [matchId] = match
 local playerMatch = {} -- [Player] = matchId
-local pendingChallenges = {} -- [targetUserId] = challengerUserId
-local lastAttack = {}
+local pendingChallenges = {} -- [targetUserId] = { challengerUserId, expiresAt }
+local lastAttack = {} -- [Player] = os.clock()
 
+local CHALLENGE_TTL = 30 -- seconds
+
+-- One dedicated arena per world. The local dev world is Settlement; when real
+-- Places are configured, WorldService reports the player's current world.
 local ARENAS = {
 	settlement = { center = Vector3.new(0, 0, -50), radius = 30 },
+	village = { center = Vector3.new(0, 0, 260), radius = 30 },
+	city = { center = Vector3.new(140, 0, 0), radius = 30 },
+	megacity = { center = Vector3.new(280, 0, 0), radius = 30 },
+	space_city = { center = Vector3.new(420, 0, 0), radius = 30 },
 }
 
 local function getArena(worldId)
 	return ARENAS[worldId] or ARENAS.settlement
 end
 
+-- Best-effort current world per player. Defaults to Settlement (the local
+-- dev world). Updated by WorldService/teleport flow when Places are live.
+local playerWorld = {} -- [Player] = worldId
+
+function PvPService.setWorld(player: Player, worldId: string)
+	if type(worldId) ~= "string" then
+		return
+	end
+	playerWorld[player] = worldId
+end
+
 local function currentWorld(player)
-	-- Best-effort: use profile rebirths? Default settlement.
-	return "settlement"
+	return playerWorld[player] or "settlement"
+end
+
+local function cleanChallenge(targetUserId)
+	pendingChallenges[targetUserId] = nil
 end
 
 local function endMatch(match, winner)
+	if not match or not match.active then
+		return -- idempotent: endMatch may be called from multiple paths
+	end
 	match.active = false
 	local remotes = ReplicatedStorage:FindFirstChild("Remotes")
 	local notify = remotes and remotes:FindFirstChild("Notify")
 	local update = remotes and remotes:FindFirstChild("PvPUpdate")
+
 	if winner then
 		local profile = Data and Data.get(winner)
 		if profile then
+			-- Reward exactly once, from server-controlled value only.
 			Data.addCoins(winner, 100)
 		end
 		if notify then
@@ -46,21 +79,34 @@ local function endMatch(match, winner)
 		end
 	end
 	if update then
-		update:FireClient(match.playerA, "ended", winner and winner.Name or "none")
-		update:FireClient(match.playerB, "ended", winner and winner.Name or "none")
+		local winnerName = winner and winner.Name or "none"
+		update:FireClient(match.playerA, "ended", winnerName)
+		update:FireClient(match.playerB, "ended", winnerName)
 	end
-	-- cleanup
-	playerMatch[match.playerA] = nil
-	playerMatch[match.playerB] = nil
-	-- respawn
+
+	-- Unbind players from the match.
+	if match.playerA then
+		playerMatch[match.playerA] = nil
+	end
+	if match.playerB then
+		playerMatch[match.playerB] = nil
+	end
+
+	-- Respawn participants after a short delay so they aren't left in the arena.
 	task.delay(2, function()
 		if match.playerA and match.playerA.Parent then
-			match.playerA:LoadCharacter()
+			pcall(function()
+				match.playerA:LoadCharacter()
+			end)
 		end
 		if match.playerB and match.playerB.Parent then
-			match.playerB:LoadCharacter()
+			pcall(function()
+				match.playerB:LoadCharacter()
+			end)
 		end
 	end)
+
+	matches[match.id] = nil
 end
 
 function PvPService.start(dataService)
@@ -89,39 +135,68 @@ function PvPService.start(dataService)
 		attackRemote = r
 	end
 
+	-- Challenge expiry sweep.
+	task.spawn(function()
+		while true do
+			task.wait(5)
+			local now = os.clock()
+			for targetUserId, entry in pairs(pendingChallenges) do
+				if now > entry.expiresAt then
+					cleanChallenge(targetUserId)
+					local target = Players:GetPlayerByUserId(targetUserId)
+					if target then
+						local notify = remotes:FindFirstChild("Notify")
+						if notify then
+							notify:FireClient(target, "info", "PvP challenge expired.")
+						end
+					end
+				end
+			end
+		end
+	end)
+
 	challengeRemote.OnServerEvent:Connect(function(player, targetUserId)
 		targetUserId = tonumber(targetUserId)
 		if not targetUserId then
 			return
-		end
+	end
 		if playerMatch[player] then
-			return
+			return -- already in a match
+		end
+		if player.UserId == targetUserId then
+			return -- no self-challenge
 		end
 		local target = Players:GetPlayerByUserId(targetUserId)
-		if not target or target == player then
+		if not target then
 			return
 		end
 		if playerMatch[target] then
-			return
+			return -- target already in a match
 		end
-		pendingChallenges[target.UserId] = player.UserId
+		pendingChallenges[target.UserId] = { challengerUserId = player.UserId, expiresAt = os.clock() + CHALLENGE_TTL }
 		local notify = remotes:FindFirstChild("Notify")
 		if notify then
-			notify:FireClient(target, "info", player.Name .. " challenged you to PvP! (accept via menu)")
+			notify:FireClient(target, "info", player.Name .. " challenged you to 1v1! (expires in 30s)")
+		end
+		if notify then
+			notify:FireClient(player, "info", "Challenge sent to " .. target.Name .. ".")
 		end
 	end)
 
 	acceptRemote.OnServerEvent:Connect(function(player)
-		local challengerId = pendingChallenges[player.UserId]
-		if not challengerId then
+		local entry = pendingChallenges[player.UserId]
+		if not entry then
 			return
 		end
-		pendingChallenges[player.UserId] = nil
-		local challenger = Players:GetPlayerByUserId(challengerId)
-		if not challenger or playerMatch[challenger] or playerMatch[player] then
+		if os.clock() > entry.expiresAt then
+			cleanChallenge(player.UserId)
 			return
 		end
-		-- create match
+		cleanChallenge(player.UserId)
+		local challenger = Players:GetPlayerByUserId(entry.challengerUserId)
+		if not challenger or playerMatch[challenger] or playerMatch[player] or challenger == player then
+			return
+		end
 		local matchId = tostring(os.clock()) .. "_" .. tostring(player.UserId)
 		local arena = getArena(currentWorld(player))
 		local center = arena.center
@@ -131,11 +206,11 @@ function PvPService.start(dataService)
 			playerB = player,
 			healthA = 100,
 			healthB = 100,
-			maxHealth = 100,
-			arena = arena,
+			maxHealthA = 100,
+			maxHealthB = 100,
 			active = true,
+			arena = arena,
 		}
-		-- scale health by power
 		local pa = Data and Data.get(challenger)
 		local pb = Data and Data.get(player)
 		match.healthA = 100 + math.floor(((pa and pa.power) or 0) / 100)
@@ -146,7 +221,6 @@ function PvPService.start(dataService)
 		playerMatch[challenger] = matchId
 		playerMatch[player] = matchId
 
-		-- teleport
 		local function teleport(p, offset)
 			local char = p.Character
 			local root = char and char:FindFirstChild("HumanoidRootPart")
@@ -161,6 +235,12 @@ function PvPService.start(dataService)
 		if update then
 			update:FireClient(challenger, "started", player.Name)
 			update:FireClient(player, "started", challenger.Name)
+			update:FireClient(challenger, "health", {
+				a = match.healthA, b = match.healthB, maxA = match.maxHealthA, maxB = match.maxHealthB,
+			})
+			update:FireClient(player, "health", {
+				a = match.healthA, b = match.healthB, maxA = match.maxHealthA, maxB = match.maxHealthB,
+			})
 		end
 	end)
 
@@ -171,7 +251,7 @@ function PvPService.start(dataService)
 		end
 		local matchId = playerMatch[player]
 		if not matchId then
-			return
+			return -- not in a match
 		end
 		local match = matches[matchId]
 		if not match or not match.active then
@@ -179,21 +259,19 @@ function PvPService.start(dataService)
 		end
 		local opponent = (player == match.playerA) and match.playerB or match.playerA
 		if not opponent or opponent.UserId ~= targetUserId then
-			return
+			return -- can only attack your bound opponent
 		end
-		-- range check
 		local root = player.Character and player.Character:FindFirstChild("HumanoidRootPart")
 		local oroot = opponent.Character and opponent.Character:FindFirstChild("HumanoidRootPart")
 		if not root or not oroot then
 			return
 		end
 		if (root.Position - oroot.Position).Magnitude > 20 then
-			return
+			return -- range check from actual position
 		end
-		-- cooldown
 		local now = os.clock()
 		if now - (lastAttack[player] or 0) < 0.8 then
-			return
+			return -- cooldown
 		end
 		lastAttack[player] = now
 
@@ -202,6 +280,9 @@ function PvPService.start(dataService)
 			bs = require(script.Parent.BrainrotService)
 		end)
 		local damage = bs and bs.getEquippedDamage(player) or 10
+		if damage <= 0 then
+			damage = 10
+		end
 
 		if player == match.playerA then
 			match.healthB -= damage
@@ -217,16 +298,9 @@ function PvPService.start(dataService)
 
 		local update = remotes:FindFirstChild("PvPUpdate")
 		if update then
-			update:FireClient(
-				match.playerA,
-				"health",
-				{ a = match.healthA, b = match.healthB, maxA = match.maxHealthA, maxB = match.maxHealthB }
-			)
-			update:FireClient(
-				match.playerB,
-				"health",
-				{ a = match.healthA, b = match.healthB, maxA = match.maxHealthA, maxB = match.maxHealthB }
-			)
+			local payload = { a = match.healthA, b = match.healthB, maxA = match.maxHealthA, maxB = match.maxHealthB }
+			update:FireClient(match.playerA, "health", payload)
+			update:FireClient(match.playerB, "health", payload)
 		end
 
 		if match.healthA <= 0 or match.healthB <= 0 then
@@ -236,6 +310,8 @@ function PvPService.start(dataService)
 	end)
 
 	Players.PlayerRemoving:Connect(function(player)
+		lastAttack[player] = nil
+		playerWorld[player] = nil
 		local matchId = playerMatch[player]
 		if matchId then
 			local match = matches[matchId]
@@ -244,12 +320,19 @@ function PvPService.start(dataService)
 				endMatch(match, winner)
 			end
 		end
-		lastAttack[player] = nil
 	end)
 end
 
 function PvPService.getMatch(player)
 	return playerMatch[player]
+end
+
+function PvPService.getArena(worldId)
+	return getArena(worldId)
+end
+
+function PvPService.isInMatch(player)
+	return playerMatch[player] ~= nil
 end
 
 return PvPService

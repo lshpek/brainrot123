@@ -62,11 +62,13 @@ local mapHandles = MapBuilder.build()
 
 ConfigValidation.assertValid()
 
--- Spawn destructible buildings in each zone (after map built).
-for _, zone in Config.Zones do
-	local zoneFolder = workspace.Map:FindFirstChild(zone.name)
-	if zoneFolder then
-		BuildingService.spawnZoneBuildings(zone.name, zoneFolder)
+-- Spawn destructible buildings in each world (after map built).
+local worldHandles = mapHandles.worldHandles
+for _, layout in ipairs(Config.WorldLayouts) do
+	local worldFolder = workspace.Map:FindFirstChild(layout.name)
+	local handle = worldHandles and worldHandles[layout.id]
+	if worldFolder and handle then
+		BuildingService.spawnWorldBuildings(layout.id, worldFolder, handle.spawn)
 	end
 end
 
@@ -76,20 +78,31 @@ Training.start(Data, Monetization, MapBuilder)
 Shop.start(Data)
 BrainrotService.start(Data)
 BuildingService.start(Data, BrainrotService)
-CombatService.start(Data, BrainrotService, BuildingService)
+CombatService.start(Data, BrainrotService, BuildingService, BossService)
 FartJumpService.start(Data)
 WorldService.start(Data)
 AdminService.start(Data)
 Analytics.start()
-QuestService.start(Data)
-BossService.start(Data)
+QuestService.start(Data, BrainrotService)
+BossService.start(Data, BrainrotService)
 
--- Spawn Settlement boss near the Beach spawn.
+-- Spawn one configured boss per world at its boss district.
 local mapFolder = workspace:FindFirstChild("Map")
 if mapFolder then
-	BossService.spawnBoss("settlement_boss", Vector3.new(0, 0, 80), mapFolder)
+	for _, layout in ipairs(Config.WorldLayouts) do
+		local worldFolder = mapFolder:FindFirstChild(layout.name)
+		local handle = worldHandles and worldHandles[layout.id]
+		if worldFolder and handle and layout.bossId then
+			BossService.spawnBoss(layout.bossId, handle.boss, worldFolder)
+		end
+	end
 end
 PvPService.start(Data)
+
+-- Wire world identity into PvP so matches use the correct per-world arena.
+-- WorldService.start was already called above. Teleport-to-Place is disabled
+-- until real Place IDs are configured (WorldService guards placeId == 0), so
+-- the local dev world defaults to Settlement (handled in PvPService).
 GlobalLeaderboard.start(Data, mapHandles.leaderboardPart)
 
 print("[Server] FART BRAINROT SIMULATOR ready 💨")
