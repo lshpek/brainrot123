@@ -75,6 +75,33 @@ function Hud.start()
 	statPill(bar, 2, "🪙", "Coins")
 	statPill(bar, 3, "🔄", "Rebirths")
 
+	-- ============================== BRAINROT DISPLAY ==============================
+	local brainrotLabel = UI.create("TextLabel", {
+		AnchorPoint = Vector2.new(0.5, 0),
+		Position = UDim2.new(0.5, 0, 0, 60),
+		Size = UDim2.fromOffset(260, 32),
+		BackgroundTransparency = 1,
+		Text = "🧠 Toxic Titan (Lv. 1)",
+		TextColor3 = UI.Palette.accent,
+		Font = Enum.Font.FredokaOne,
+		TextScaled = true,
+		Parent = gui,
+	}, { UI.create("UITextSizeConstraint", { MaxTextSize = 20 }) })
+
+	task.spawn(function()
+		-- Wait for EquippedBrainrot attribute to replicate from server.
+		while not player:GetAttribute("EquippedBrainrot") do
+			task.wait(0.1)
+		end
+		local function update()
+			local equippedId = player:GetAttribute("EquippedBrainrot") or "toxic_titan"
+			local name = equippedId:gsub("_", " "):gsub("^%l", string.upper)
+			brainrotLabel.Text = "🧠 " .. name
+		end
+		update()
+		player:GetAttributeChangedSignal("EquippedBrainrot"):Connect(update)
+	end)
+
 	-- ============================== TRAIN BUTTON ==============================
 	local remotes = ReplicatedStorage:WaitForChild("Remotes")
 	local punchRemote = remotes:WaitForChild("Punch")
@@ -122,7 +149,7 @@ function Hud.start()
 	local menu = UI.create("Frame", {
 		AnchorPoint = Vector2.new(0, 0.5),
 		Position = UDim2.new(0, 12, 0.5, 0),
-		Size = UDim2.fromOffset(120, 220),
+		Size = UDim2.fromOffset(120, 280),
 		BackgroundTransparency = 1,
 		Parent = gui,
 	}, {
@@ -153,6 +180,17 @@ function Hud.start()
 		Parent = menu,
 	}).Activated:Connect(function()
 		UI.toggleWindow("Rebirth")
+	end)
+
+	UI.button({
+		Text = "🧠 Brainrots",
+		Size = UDim2.fromOffset(120, 46),
+		LayoutOrder = 3,
+		Color = UI.Palette.panelLight,
+		TextColor = UI.Palette.text,
+		Parent = menu,
+	}).Activated:Connect(function()
+		UI.toggleWindow("Brainrots")
 	end)
 
 	-- Auto Train toggle: only visible once the gamepass is owned.

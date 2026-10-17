@@ -3,10 +3,11 @@
 -- requiring each other, which keeps the graph flat and easy to follow.
 
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
+local Config = require(ReplicatedStorage.Shared.Config)
 
 local remotes = Instance.new("Folder")
 remotes.Name = "Remotes"
-for _, name in { "Punch", "BuyGear", "Rebirth", "Notify", "ToggleAutoTrain" } do
+for _, name in { "Punch", "BuyGear", "Rebirth", "Notify", "ToggleAutoTrain", "Attack", "AttackResult", "BuildingDestroyed", "EquipBrainrot", "EquipPet", "HatchEgg" } do
 	local remote = Instance.new("RemoteEvent")
 	remote.Name = name
 	remote.Parent = remotes
@@ -19,13 +20,27 @@ local Training = require(script.Training)
 local Shop = require(script.Shop)
 local MapBuilder = require(script.MapBuilder)
 local GlobalLeaderboard = require(script.GlobalLeaderboard)
+local BrainrotService = require(script.BrainrotService)
+local BuildingService = require(script.BuildingService)
+local CombatService = require(script.CombatService)
 
 local mapHandles = MapBuilder.build()
+
+-- Spawn destructible buildings in each zone (after map built).
+for _, zone in Config.Zones do
+	local zoneFolder = workspace.Map:FindFirstChild(zone.name)
+	if zoneFolder then
+		BuildingService.spawnZoneBuildings(zone.name, zoneFolder)
+	end
+end
 
 Data.start()
 Monetization.start(Data)
 Training.start(Data, Monetization, MapBuilder)
 Shop.start(Data)
+BrainrotService.start(Data)
+BuildingService.start(Data, BrainrotService)
+CombatService.start(Data, BrainrotService, BuildingService)
 GlobalLeaderboard.start(Data, mapHandles.leaderboardPart)
 
-print("[Server] Power Punch Simulator ready 💪")
+print("[Server] FART BRAINROT SIMULATOR ready 💨")

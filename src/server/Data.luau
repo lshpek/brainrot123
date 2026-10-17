@@ -6,16 +6,26 @@
 local Players = game:GetService("Players")
 local DataStoreService = game:GetService("DataStoreService")
 
-local DATASTORE_NAME = "PlayerData_v1"
+local DATASTORE_NAME = "PlayerData_v2"
 local AUTOSAVE_INTERVAL = 60
 local LOAD_RETRIES = 3
 
+local CURRENT_SCHEMA = 2
+
 local DEFAULT_DATA = {
-	version = 1,
+	version = CURRENT_SCHEMA,
 	power = 0,
 	coins = 0,
 	rebirths = 0,
 	gearLevel = 0,
+	-- Brainrot collection (independent per character).
+	brainrots = {}, -- [brainrotId] = { level, xp, owned, equipped }
+	equippedBrainrot = "toxic_titan", -- starter Brainrot id
+	-- Pet collection.
+	pets = {}, -- [petId] = { owned, equipped }
+	equippedPets = {}, -- [petId] = true, max 3
+	-- Zone progression.
+	zoneUnlocks = { Beach = true }, -- starting hub unlocked by default
 }
 
 local Data = {}
@@ -47,6 +57,26 @@ local function sync(player: Player)
 	stats.Coins.Value = profile.coins
 	stats.Rebirths.Value = profile.rebirths
 	player:SetAttribute("GearLevel", profile.gearLevel)
+	player:SetAttribute("EquippedBrainrot", profile.equippedBrainrot or "")
+end
+
+local function migrateData(data: { [string]: any }): { [string]: any }
+	local version = data.version or 0
+	if version >= CURRENT_SCHEMA then
+		return data
+	end
+	-- v1 -> v2: add Brainrot, pet, and zone progression fields.
+	if version == 1 then
+		data.brainrots = {
+			toxic_titan = { level = 1, xp = 0, owned = true, equipped = true },
+		}
+		data.equippedBrainrot = "toxic_titan"
+		data.pets = {}
+		data.equippedPets = {}
+		data.zoneUnlocks = { Beach = true }
+		data.version = CURRENT_SCHEMA
+	end
+	return data
 end
 
 local function loadProfile(player: Player)
@@ -71,6 +101,8 @@ local function loadProfile(player: Player)
 			data[key] = value
 		end
 	end
+	-- Apply schema migration (never replace valid saved progress with defaults).
+	data = migrateData(data)
 	return data
 end
 
@@ -106,6 +138,23 @@ local function onPlayerAdded(player: Player)
 	stats.Parent = player
 
 	sync(player)
+
+	-- Grant starter Brainrot if the player owns none.
+	local ReplicatedStorage = game:GetService("ReplicatedStorage")
+	local Config = require(ReplicatedStorage.Shared.Config)
+	local starterId = nil
+	for _, b in ipairs(Config.Brainrots) do
+		if b.rarity == "Common" then
+			starterId = b.id
+			break
+		end
+	end
+	if starterId then
+		Data.ownBrainrot(player, starterId)
+		if not profile.equippedBrainrot then
+			Data.equipBrainrot(player, starterId)
+		end
+	end
 end
 
 -- ============================== PUBLIC API ==============================
@@ -158,6 +207,206 @@ function Data.applyRebirth(player: Player)
 		profile.rebirths += 1
 		sync(player)
 	end
+end
+
+-- ============================== BRAINROT DATA API ==============================
+
+function Data.getBrainrot(player: Player, brainrotId: string): { [string]: any }?
+	local profile = profiles[player]
+	if not profile then
+		return nil
+	end
+	return profile.brainrots[brainrotId]
+end
+
+function Data.getEquippedBrainrot(player: Player): string?
+	local profile = profiles[player]
+	if not profile then
+		return nil
+	end
+	return profile.equippedBrainrot
+end
+
+function Data.getAllBrainrots(player: Player): { [string]: any }?
+	local profile = profiles[player]
+	if not profile then
+		return nil
+	end
+	return profile.brainrots
+end
+
+-- Ensure a Brainrot entry exists with sane defaults (level 1).
+local function ensureBrainrotEntry(profile, brainrotId: string)
+	if not profile.brainrots[brainrotId] then
+		profile.brainrots[brainrotId] = {
+			level = 1,
+			xp = 0,
+			owned = false,
+			equipped = false,
+		}
+	end
+	return profile.brainrots[brainrotId]
+end
+
+-- Grant ownership of a Brainrot to a player.
+function Data.ownBrainrot(player: Player, brainrotId: string)
+	local profile = profiles[player]
+	if not profile then
+		return false
+	end
+	local entry = ensureBrainrotEntry(profile, brainrotId)
+	if entry.owned then
+		return true -- already owned
+	end
+	entry.owned = true
+	entry.level = 1
+	entry.xp = 0
+	-- Equip it if nothing is equipped yet.
+	if not profile.equippedBrainrot then
+		profile.equippedBrainrot = brainrotId
+		entry.equipped = true
+	end
+	sync(player)
+	return true
+end
+
+-- Equip a Brainrot (unequips the previously equipped one).
+function Data.equipBrainrot(player: Player, brainrotId: string): boolean
+	local profile = profiles[player]
+	if not profile then
+		return false
+	end
+	local entry = profile.brainrots[brainrotId]
+	if not entry or not entry.owned then
+		return false -- don't equip what you don't own
+	end
+	-- Unequip current.
+	local current = profile.equippedBrainrot
+	if current then
+		local currentEntry = profile.brainrots[current]
+		if currentEntry then
+			currentEntry.equipped = false
+		end
+	end
+	profile.equippedBrainrot = brainrotId
+	entry.equipped = true
+	sync(player)
+	return true
+end
+
+-- Add XP to a specific Brainrot (does NOT affect other Brainrots).
+-- Returns true if a level-up occurred.
+function Data.addBrainrotXp(player: Player, brainrotId: string, xpAmount: number): boolean
+	local profile = profiles[player]
+	if not profile then
+		return false
+	end
+	local entry = ensureBrainrotEntry(profile, brainrotId)
+	if not entry.owned then
+		return false
+	end
+	entry.xp += xpAmount
+	-- Level-up detection is handled by BrainrotService, which reads config
+	-- from the shared Brainrot module. Data only persists raw XP/level.
+	return true
+end
+
+function Data.setBrainrotLevel(player: Player, brainrotId: string, level: number, xp: number)
+	local profile = profiles[player]
+	if not profile then
+		return
+	end
+	local entry = ensureBrainrotEntry(profile, brainrotId)
+	if not entry.owned then
+		return
+	end
+	entry.level = level
+	entry.xp = xp
+	sync(player)
+end
+
+-- ============================== PET DATA API ==============================
+
+function Data.getPet(player: Player, petId: string): { [string]: any }?
+	local profile = profiles[player]
+	if not profile then
+		return nil
+	end
+	return profile.pets[petId]
+end
+
+function Data.getEquippedPets(player: Player): { [string]: boolean }?
+	local profile = profiles[player]
+	if not profile then
+		return nil
+	end
+	return profile.equippedPets
+end
+
+function Data.ownPet(player: Player, petId: string)
+	local profile = profiles[player]
+	if not profile then
+		return false
+	end
+	if not profile.pets[petId] then
+		profile.pets[petId] = { owned = true, equipped = false }
+	else
+		profile.pets[petId].owned = true
+	end
+	return true
+end
+
+function Data.equipPet(player: Player, petId: string): boolean
+	local profile = profiles[player]
+	if not profile then
+		return false
+	end
+	local petEntry = profile.pets[petId]
+	if not petEntry or not petEntry.owned then
+		return false
+	end
+	local equipped = profile.equippedPets
+	local maxPets = require(game:GetService("ReplicatedStorage").Shared.Config).MaxEquippedPets
+	-- Count currently equipped.
+	local count = 0
+	for _, v in equipped do
+		if v then
+			count += 1
+		end
+	end
+	if equipped[petId] then
+		-- Already equipped: unequip it.
+		equipped[petId] = nil
+		petEntry.equipped = false
+		sync(player)
+		return true
+	end
+	if count >= maxPets then
+		return false -- at limit
+	end
+	equipped[petId] = true
+	petEntry.equipped = true
+	sync(player)
+	return true
+end
+
+-- ============================== ZONE DATA API ==============================
+
+function Data.isZoneUnlocked(player: Player, zoneName: string): boolean
+	local profile = profiles[player]
+	if not profile then
+		return false
+	end
+	return profile.zoneUnlocks[zoneName] == true
+end
+
+function Data.unlockZone(player: Player, zoneName: string)
+	local profile = profiles[player]
+	if not profile then
+		return
+	end
+	profile.zoneUnlocks[zoneName] = true
+	sync(player)
 end
 
 function Data.start()
