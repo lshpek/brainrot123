@@ -115,9 +115,9 @@ return {
 
 	{ "Pet bonus is clamped to cap", function()
 		local config = getConfig("toxic_titan")
-		local withinCap = totalDamage(config, 1, 0.5)
+		local atCap = totalDamage(config, 1, PetBonusCaps.damage)
 		local overCap = totalDamage(config, 1, 5.0)
-		assert(overCap == withinCap, "Bonus over cap should be clamped")
+		assert(overCap == atCap, "Bonus over cap should be clamped to cap")
 	end },
 
 	{ "Damage scales with both level and bonus", function()

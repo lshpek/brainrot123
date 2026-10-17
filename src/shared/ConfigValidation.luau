@@ -162,15 +162,15 @@ function ConfigValidation.validate(): { string }
 					.. ")"
 			)
 		end
-		-- Spawn position must have a valid Y (above ground).
-		if type(layout.spawn) ~= "Vector3" or layout.spawn.Y < 0 then
+		-- Spawn position must be a Vector3 and have a valid Y (above ground).
+		if typeof(layout.spawn) ~= "Vector3" or layout.spawn.Y < 0 then
 			table.insert(errors, "WorldLayout '" .. tostring(layout.id) .. "' has invalid spawn position")
 		end
 		-- Boss position should be within a reasonable range of the world center.
 		-- Worlds are spaced ZONE_SIZE apart; positions should be within ±ZONE_SIZE of center.
 		local ZONE_SIZE = 140
 		local worldIndex = Config.WorldZoneIndex[layout.id]
-		if worldIndex and type(layout.bossPosition) == "Vector3" then
+		if worldIndex and typeof(layout.bossPosition) == "Vector3" then
 			local worldCenterX = (worldIndex - 1) * ZONE_SIZE
 			if math.abs(layout.bossPosition.X) > ZONE_SIZE or math.abs(layout.bossPosition.Z) > ZONE_SIZE then
 				table.insert(errors, "WorldLayout '" .. tostring(layout.id) .. "' boss position outside zone bounds")

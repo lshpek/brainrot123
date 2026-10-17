@@ -233,9 +233,15 @@ function MapBuilder.build()
 	print("[MapBuilder] built " .. tostring(#Config.WorldLayouts) .. " worlds")
 
 	-- Connect worlds with paved paths between their spawns and create gates.
+	-- Skip any world whose handle is missing (that world failed to build).
 	local spawnPoints = {}
 	for _, layout in ipairs(Config.WorldLayouts) do
-		table.insert(spawnPoints, worldHandles[layout.id].spawn)
+		local handle = worldHandles[layout.id]
+		if handle then
+			table.insert(spawnPoints, handle.spawn)
+		else
+			warn("[MapBuilder] No spawn handle for '" .. tostring(layout.name) .. "'; skipping path/gate")
+		end
 	end
 	for i = 2, #spawnPoints do
 		local from = spawnPoints[i - 1]
@@ -277,7 +283,11 @@ function MapBuilder.build()
 	end
 
 	-- Leaderboard board near the first world's spawn.
-	local firstSpawn = worldHandles[Config.WorldLayouts[1].id].spawn
+	local firstHandle = worldHandles[Config.WorldLayouts[1].id]
+	local firstSpawn = (firstHandle and firstHandle.spawn) or Vector3.new(0, 5, 0)
+	if not firstHandle then
+		warn("[MapBuilder] First world missing handle; leaderboard placed at fallback position")
+	end
 	local board = part({
 		Name = "LeaderboardBoard",
 		Size = Vector3.new(26, 14, 2),
