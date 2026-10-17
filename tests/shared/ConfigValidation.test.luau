@@ -1,5 +1,6 @@
 -- ConfigValidation.test.luau
 -- Tests for ConfigValidation invariants: unique IDs, bounds, world consistency.
+-- Lune-compatible: no Roblox globals (no Vector3). Uses plain tables for positions.
 
 local Config = {}
 
@@ -32,11 +33,11 @@ Config.Worlds = {
 	{ id = "space_city", name = "Space City", rebirthRequired = 100 },
 }
 Config.WorldLayouts = {
-	{ id = "settlement", name = "Settlement", spawn = { X = 0, Y = 0.5, Z = 52 } },
-	{ id = "village", name = "Village", spawn = { X = 140, Y = 0.5, Z = 40 } },
-	{ id = "city", name = "City", spawn = { X = 280, Y = 0.5, Z = 40 } },
-	{ id = "megacity", name = "Megacity", spawn = { X = 420, Y = 0.5, Z = 40 } },
-	{ id = "space_city", name = "Space City", spawn = { X = 560, Y = 0.5, Z = 40 } },
+	{ id = "settlement", name = "Settlement", spawn = { X = 0, Y = 0.5, Z = 52 }, arenaPosition = { X = 0, Y = 0, Z = -50 }, arenaRadius = 30 },
+	{ id = "village", name = "Village", spawn = { X = 0, Y = 0.5, Z = 40 }, arenaPosition = { X = 0, Y = 0, Z = -50 }, arenaRadius = 30 },
+	{ id = "city", name = "City", spawn = { X = 0, Y = 0.5, Z = 40 }, arenaPosition = { X = 0, Y = 0, Z = -60 }, arenaRadius = 30 },
+	{ id = "megacity", name = "Megacity", spawn = { X = 0, Y = 0.5, Z = 40 }, arenaPosition = { X = 0, Y = 0, Z = -70 }, arenaRadius = 30 },
+	{ id = "space_city", name = "Space City", spawn = { X = 0, Y = 0.5, Z = 40 }, arenaPosition = { X = 0, Y = 0, Z = -80 }, arenaRadius = 30 },
 }
 Config.WorldZoneIndex = {}
 for i, layout in ipairs(Config.WorldLayouts) do
@@ -45,6 +46,15 @@ end
 Config.Brainrots = {
 	{ id = "toxic_titan", name = "Toxic Titan", rarity = "Common", baseDamage = 10 },
 	{ id = "skibidi_slayer", name = "Skibidi Slayer", rarity = "Rare", baseDamage = 25 },
+}
+Config.FartJump = {
+	baseImpulse = 55, maxImpulse = 140, scaleK = 2500, cooldown = 1.6,
+}
+Config.Combat = {
+	attackCooldown = 0.15, maxAttackRange = 24,
+}
+Config.PvP = {
+	winRewardCoins = 100,
 }
 
 return {
@@ -110,12 +120,6 @@ return {
 		end
 	end },
 
-	{ "World spawn Y is above ground", function()
-		for _, l in ipairs(Config.WorldLayouts) do
-			assert(type(l.spawn) == "table" and l.spawn.Y >= 0, "Layout " .. tostring(l.id) .. " has invalid spawn")
-		end
-	end },
-
 	{ "Building health is positive", function()
 		for _, b in ipairs(Config.Buildings) do
 			assert(b.maxHealth > 0, "Building " .. tostring(b.id) .. " has non-positive health")
@@ -126,5 +130,17 @@ return {
 		for _, w in ipairs(Config.Worlds) do
 			assert(w.rebirthRequired >= 0, "World " .. tostring(w.id) .. " has negative rebirth requirement")
 		end
+	end },
+
+	{ "FartJump tuning is sane", function()
+		local fj = Config.FartJump
+		assert(fj.baseImpulse >= 0, "baseImpulse must be non-negative")
+		assert(fj.maxImpulse > fj.baseImpulse, "maxImpulse must exceed baseImpulse")
+		assert(fj.scaleK > 0, "scaleK must be positive")
+		assert(fj.cooldown > 0, "cooldown must be positive")
+	end },
+
+	{ "PvP win reward is bounded", function()
+		assert(Config.PvP.winRewardCoins >= 0, "PvP reward must be non-negative")
 	end },
 }

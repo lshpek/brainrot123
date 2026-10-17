@@ -64,8 +64,14 @@
 - **BuildingService**: `generationId` + `rewardClaimedGen` (exactly-once reward per generation), stale-respawn abort. Verdict: KEEP_AND_FIX (DemolitionSimulator без лицензии — не копировать).
 - **PetFollower**: переведён на локальный `src/shared/Trove.luau` (PATTERN_ONLY из MIT Trove) — двойной `start()` больше не дублирует коннекты.
 - **FartJumpService**: делегирует кривую в `src/shared/FartJumpCurve.luau` (single source of truth, сервер по-прежнему авторитетен).
-- **ConfigValidation**: расширен (gear cost/multiplier монотонность, FartJump/Combat sanity, PvP reward bound).
+- **ConfigValidation**: расширен (gear cost/multiplier монотонность, FartJump/Combat sanity, PvP reward bound, WorldLayouts/boss world validation).
 - **Tests**: `tests/test_runner` (lune) — Formulas + ConfigValidation + FartJumpCurve/once-only + Brainrot (все lune-safe, без Roblox-глобалов). Старые баги исправлены: `Formatters.abbreviate` → `Formulas.abbreviate`, `Color3` убран из Brainrot.test, неверная математика урона (`109` → `41`) исправлена.
 - **CI**: к Rojo-build добавлены StyLua-check, Selene (`selene.toml`), Lune tests. Прогон — в GitHub Actions (локально rojo/stylua/lune/selene нет в PATH).
 - **Лицензии подтверждены**: kpackk MIT, Tristan886 MIT, HaloAndHorns MIT, luaukit MIT, ProfileStore Apache-2.0, creator-docs MIT, RbxUtil MIT, precision-framework MIT; DemolitionSimulator — БЕЗ ЛИЦЕНЗИИ (reject); forge-vfx — custom copyleft (reject). Commit SHA upstream: BLOCKED (нет clone в окружении) — вендоринга нет, только собственные реализации.
 - **Не требует патча**: sell-pet endpoint отсутствует в игре (векторы sell-equipped не применимы); PvP challenge-sweep уже есть; Data wipe-guard/lease уже есть (миграция на ProfileStore запрещена без отдельного плана).
+
+## Additional P0/P1 Fixes Found During Audit (2026-10-17)
+- **[CRITICAL] Data.luau**: `Tick()` (capital T) is not a valid Roblox Luau function — replaced all 4 occurrences with `tick()` (lowercase). `Tick()` would crash at runtime during session lease operations.
+- **[CRITICAL] MapBuilder.luau / QuestService.luau**: Mojibake characters (`вЂў`, `вЂ—`) in UTF-8 source files — replaced with proper Unicode (`•` bullet, `—` em-dash).
+- **[CRITICAL] Config.luau WorldLayouts**: `spawn`, `bossPosition`, and `arenaPosition` X coordinates were absolute (140/280/420/560) but MapBuilder and PvPService add world center X on top, causing double-offset (Village spawn would be at X=280 instead of X=140). Changed all to relative X=0. Settlement was accidentally correct (centerX=0).
+- **[MEDIUM] ConfigValidation**: Added WorldLayouts <-> Worlds cross-validation, world ID uniqueness, boss world references, gear level monotonicity, FartJump/Combat tuning sanity checks.

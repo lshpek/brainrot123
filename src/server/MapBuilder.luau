@@ -206,9 +206,11 @@ function MapBuilder.getZoneAt(position: Vector3)
 end
 
 function MapBuilder.build()
+	print("[MapBuilder] build started")
 	local map = Instance.new("Folder")
 	map.Name = "Map"
 	map.Parent = workspace
+	print("[MapBuilder] Map folder created")
 
 	-- Create ZoneGates folder for client gate system.
 	local zoneGatesFolder = Instance.new("Folder")
@@ -218,10 +220,17 @@ function MapBuilder.build()
 	local worldHandles = {}
 
 	for index, layout in ipairs(Config.WorldLayouts) do
-		local worldFolder, handle = buildWorld(index, layout)
-		worldHandles[layout.id] = handle
-		worldHandles[layout.name] = handle
+		local ok, result = pcall(function()
+			return { buildWorld(index, layout) }
+		end)
+		if ok and result then
+			worldHandles[layout.id] = result[2]
+			worldHandles[layout.name] = result[2]
+		else
+			warn("[MapBuilder] Failed to build world '" .. tostring(layout.name) .. "': " .. tostring(result))
+		end
 	end
+	print("[MapBuilder] built " .. tostring(#Config.WorldLayouts) .. " worlds")
 
 	-- Connect worlds with paved paths between their spawns and create gates.
 	local spawnPoints = {}
@@ -302,6 +311,10 @@ function MapBuilder.build()
 	bloom.Size = 24
 	bloom.Threshold = 1.2
 	bloom.Parent = Lighting
+
+	-- Count generated floor parts for diagnostics.
+	local floorCount = #workspace.Map:GetDescendants()
+	print("[MapBuilder] build completed — " .. tostring(floorCount) .. " total instances in Map, " .. tostring(#zoneRegions) .. " zone regions")
 
 	return { worldHandles = worldHandles, leaderboardPart = board }
 end

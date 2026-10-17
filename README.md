@@ -60,13 +60,14 @@ src/
 ## Run it locally
 
 1. Install [Roblox Studio](https://create.roblox.com/) and [Rojo](https://rojo.space/docs/v7/getting-started/installation/) (or use `rojo.exe` if present)
-2. Build the place file:
+2. (For live-sync) Install the [Rojo plugin](https://create.roblox.com/marketplace/asset?id=11183249882) in Studio once
+3. Build the place file:
    ```
    rojo build default.project.json -o build/FartBrainrotSimulator.rbxl
    ```
-3. Open the `.rbxl` in Studio and hit **Play**
+4. Open the `.rbxl` in Studio and hit **Play**
 
-For live-sync development instead: `rojo plugin install` once, then `rojo serve` and connect from Studio's Rojo plugin.
+For live-sync development: `rojo plugin install` once, then `rojo serve` and connect from Studio's Rojo plugin. If Studio does not show synced files, verify the Rojo plugin is installed and connected to `localhost:34872`.
 
 > DataStores and gamepasses are silently disabled in unpublished local playtests — the game detects this and runs with in-memory data.
 

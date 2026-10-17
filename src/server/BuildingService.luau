@@ -699,7 +699,7 @@ end
 -- Spawn destructible buildings for a world using its own building distribution.
 -- Positions are spread across the world's floor around its center.
 function BuildingService.spawnWorldBuildings(worldId: string, worldFolder: Folder, center: Vector3)
-	local buildingIds = Config.WorldBuildings and Config.WorldBuildings[worldId]
+	local buildingIds = Config.ZoneBuildings and Config.ZoneBuildings[worldId]
 	if not buildingIds or #buildingIds == 0 then
 		return
 	end

@@ -1,6 +1,7 @@
 -- Formulas.test.luau
 -- Tests for pure math formulas: gear multiplier, rebirth multiplier,
 -- power per punch, coins for power, rebirth cost, abbreviation.
+-- Inline copies of formula logic; does not require Roblox RuntimeServices.
 
 local SUFFIXES = { "", "K", "M", "B", "T", "Qa", "Qi" }
 

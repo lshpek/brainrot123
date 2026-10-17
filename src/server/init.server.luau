@@ -3,7 +3,11 @@
 -- requiring each other, which keeps the graph flat and easy to follow.
 
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
+local Run = game:GetService("RunService")
+
+print("[Server] init: starting up")
 local Config = require(ReplicatedStorage.Shared.Config)
+print("[Server] init: Config loaded (" .. tostring(#Config.WorldLayouts) .. " worlds)")
 local ConfigValidation = require(ReplicatedStorage.Shared.ConfigValidation)
 
 local remotes = Instance.new("Folder")
@@ -59,6 +63,7 @@ local BossService = require(script.BossService)
 local PvPService = require(script.PvPService)
 
 local mapHandles = MapBuilder.build()
+print("[Server] init: map built (" .. tostring(mapHandles and #mapHandles.worldHandles or 0) .. " handle entries, leaderboard: " .. tostring(mapHandles.leaderboardPart ~= nil) .. ")")
 
 ConfigValidation.assertValid()
 
@@ -71,6 +76,7 @@ for _, layout in ipairs(Config.WorldLayouts) do
 		BuildingService.spawnWorldBuildings(layout.id, worldFolder, handle.spawn)
 	end
 end
+print("[Server] init: buildings spawned")
 
 Data.start()
 Monetization.start(Data)
@@ -97,6 +103,7 @@ if mapFolder then
 		end
 	end
 end
+print("[Server] init: bosses spawned")
 PvPService.start(Data)
 
 -- Wire world identity into PvP so matches use the correct per-world arena.
@@ -104,5 +111,7 @@ PvPService.start(Data)
 -- until real Place IDs are configured (WorldService guards placeId == 0), so
 -- the local dev world defaults to Settlement (handled in PvPService).
 GlobalLeaderboard.start(Data, mapHandles.leaderboardPart)
+
+print("[Server] init: services started")
 
 print("[Server] FART BRAINROT SIMULATOR ready 💨")
