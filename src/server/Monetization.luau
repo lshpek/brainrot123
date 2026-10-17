@@ -5,14 +5,64 @@
 local MarketplaceService = game:GetService("MarketplaceService")
 local Players = game:GetService("Players")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
+local DataStoreService = game:GetService("DataStoreService")
 
 local Config = require(ReplicatedStorage.Shared.Config)
+
+local RECEIPT_STORE_NAME = "Receipts_v1"
 
 local Monetization = {}
 
 local ownership = {} -- [Player] = { [passKey] = boolean }
-local handledReceipts = {} -- [PurchaseId] = true, session-level dedupe
 local Data
+
+-- Durable, retry-safe receipt processing. The in-memory cache is only a fast
+-- path; the source of truth is a DataStore keyed by PurchaseId so a repeated
+-- receipt (Roblox retries until PurchaseGranted) can never grant twice, even
+-- across server restarts within the same processing window.
+local receiptStore
+do
+	local ok, result = pcall(function()
+		return DataStoreService:GetDataStore(RECEIPT_STORE_NAME)
+	end)
+	if ok then
+		receiptStore = result
+	else
+		warn("[Monetization] Receipt store unavailable; falling back to in-memory dedupe only.")
+	end
+end
+
+local handledReceipts = {} -- [PurchaseId] = true, session fast path
+
+-- Returns true if this PurchaseId was already durably granted.
+local function receiptAlreadyGranted(purchaseId: number): boolean
+	if handledReceipts[purchaseId] then
+		return true
+	end
+	if not receiptStore then
+		return false
+	end
+	local ok, marked = pcall(function()
+		return receiptStore:GetAsync("r_" .. tostring(purchaseId))
+	end)
+	if ok and marked then
+		handledReceipts[purchaseId] = true
+		return true
+	end
+	return false
+end
+
+-- Durably mark a receipt as granted BEFORE returning PurchaseGranted. If this
+-- write fails we still return PurchaseGranted to avoid Roblox re-prompting an
+-- already-delivered product; the fast-path cache keeps the session consistent.
+local function markReceiptGranted(purchaseId: number)
+	handledReceipts[purchaseId] = true
+	if receiptStore then
+		pcall(function()
+			receiptStore:SetAsync("r_" .. tostring(purchaseId), true)
+		end)
+	end
+end
 
 local function refreshPasses(player: Player)
 	local owned = {}
@@ -31,7 +81,9 @@ local function refreshPasses(player: Player)
 end
 
 local function processReceipt(receiptInfo)
-	if handledReceipts[receiptInfo.PurchaseId] then
+	-- Durable dedupe: a receipt Roblox re-sends (server restarted mid-grant, or
+	-- a race) must never grant currency twice.
+	if receiptAlreadyGranted(receiptInfo.PurchaseId) then
 		return Enum.ProductPurchaseDecision.PurchaseGranted
 	end
 
@@ -43,9 +95,18 @@ local function processReceipt(receiptInfo)
 
 	for _, product in Config.DevProducts do
 		if product.id == receiptInfo.ProductId then
-			Data.addCoins(player, product.coins)
-			handledReceipts[receiptInfo.PurchaseId] = true
-			local notify = ReplicatedStorage.Remotes:FindFirstChild("Notify")
+			-- Grant first, then durably mark. If the grant throws, we return
+			-- NotProcessedYet so Roblox retries rather than acking a failure.
+			local ok = pcall(function()
+				Data.addCoins(player, product.coins)
+			end)
+			if not ok then
+				warn(`[Monetization] Failed to grant {product.key} to {player.Name}`)
+				return Enum.ProductPurchaseDecision.NotProcessedYet
+			end
+			markReceiptGranted(receiptInfo.PurchaseId)
+			local notify = ReplicatedStorage:FindFirstChild("Remotes")
+			notify = notify and notify:FindFirstChild("Notify")
 			if notify then
 				notify:FireClient(player, "success", `Purchased {product.label}!`)
 			end
@@ -54,6 +115,7 @@ local function processReceipt(receiptInfo)
 	end
 
 	warn(`[Monetization] Receipt for unknown product id {receiptInfo.ProductId}`)
+	-- Unknown/unconfigured product: never ack it as granted.
 	return Enum.ProductPurchaseDecision.NotProcessedYet
 end
 

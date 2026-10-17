@@ -167,9 +167,10 @@ function Hud.start()
 		Color = UI.Palette.panelLight,
 		TextColor = UI.Palette.text,
 		Parent = menu,
-	}).Activated:Connect(function()
-		UI.toggleWindow("Shop")
-	end)
+	}).Activated
+		:Connect(function()
+			UI.toggleWindow("Shop")
+		end)
 
 	UI.button({
 		Text = "🔄 Rebirth",
@@ -178,9 +179,10 @@ function Hud.start()
 		Color = UI.Palette.panelLight,
 		TextColor = UI.Palette.text,
 		Parent = menu,
-	}).Activated:Connect(function()
-		UI.toggleWindow("Rebirth")
-	end)
+	}).Activated
+		:Connect(function()
+			UI.toggleWindow("Rebirth")
+		end)
 
 	UI.button({
 		Text = "🧠 Brainrots",
@@ -189,16 +191,29 @@ function Hud.start()
 		Color = UI.Palette.panelLight,
 		TextColor = UI.Palette.text,
 		Parent = menu,
-	}).Activated:Connect(function()
-		UI.toggleWindow("Brainrots")
-	end)
+	}).Activated
+		:Connect(function()
+			UI.toggleWindow("Brainrots")
+		end)
+
+	UI.button({
+		Text = "🐾 Pets",
+		Size = UDim2.fromOffset(120, 46),
+		LayoutOrder = 4,
+		Color = UI.Palette.panelLight,
+		TextColor = UI.Palette.text,
+		Parent = menu,
+	}).Activated
+		:Connect(function()
+			UI.toggleWindow("Pets")
+		end)
 
 	-- Auto Train toggle: only visible once the gamepass is owned.
 	local autoOn = false
 	local autoButton = UI.button({
 		Text = "⚡ Auto: OFF",
 		Size = UDim2.fromOffset(120, 46),
-		LayoutOrder = 3,
+		LayoutOrder = 5,
 		Color = UI.Palette.panelLight,
 		TextColor = UI.Palette.text,
 		Parent = menu,

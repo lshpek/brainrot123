@@ -26,9 +26,10 @@ function CombatService.start(dataService, brainrotService, buildingService)
 
 	-- Attack remote: client passes the building part it wants to hit.
 	-- Server validates ownership/distance/cooldown and applies damage.
-	local attackRemote = Instance.new("RemoteEvent")
-	attackRemote.Name = "Attack"
-	attackRemote.Parent = remotes
+	-- NOTE: The "Attack" RemoteEvent is created exactly once in init.server.luau;
+	-- reuse it here so no duplicate remote is introduced.
+	local attackRemote = remotes:FindFirstChild("Attack")
+	assert(attackRemote, "[CombatService] Missing 'Attack' RemoteEvent (expected from init.server.luau)")
 
 	attackRemote.OnServerEvent:Connect(function(player, buildingPart)
 		if type(buildingPart) ~= "Instance" or not buildingPart:IsA("BasePart") then
@@ -66,10 +67,18 @@ function CombatService.start(dataService, brainrotService, buildingService)
 			attackResult:FireClient(player, result)
 		end
 
+		-- Onboarding milestones: first successful hit, first destruction.
+		Data.setMilestone(player, "first_hit")
+
 		if result.destroyed then
+			Data.setMilestone(player, "first_destroy")
 			local notify = remotes:FindFirstChild("Notify")
 			if notify then
-				notify:FireClient(player, "success", `Destroyed {result.buildingId}! +{result.coins} 🪙 +{result.xp} XP`)
+				notify:FireClient(
+					player,
+					"success",
+					`Destroyed {result.buildingId}! +{result.coins} 🪙 +{result.xp} XP`
+				)
 			end
 		end
 	end)

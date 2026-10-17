@@ -7,7 +7,23 @@ local Config = require(ReplicatedStorage.Shared.Config)
 
 local remotes = Instance.new("Folder")
 remotes.Name = "Remotes"
-for _, name in { "Punch", "BuyGear", "Rebirth", "Notify", "ToggleAutoTrain", "Attack", "AttackResult", "BuildingDestroyed", "EquipBrainrot", "EquipPet", "HatchEgg" } do
+for _, name in
+	{
+		"Punch",
+		"BuyGear",
+		"Rebirth",
+		"Notify",
+		"ToggleAutoTrain",
+		"Attack",
+		"AttackResult",
+		"BuildingDestroyed",
+		"EquipBrainrot",
+		"EquipPet",
+		"HatchEgg",
+		"HatchResult",
+		"FartJump",
+	}
+do
 	local remote = Instance.new("RemoteEvent")
 	remote.Name = name
 	remote.Parent = remotes
@@ -23,6 +39,7 @@ local GlobalLeaderboard = require(script.GlobalLeaderboard)
 local BrainrotService = require(script.BrainrotService)
 local BuildingService = require(script.BuildingService)
 local CombatService = require(script.CombatService)
+local FartJumpService = require(script.FartJumpService)
 
 local mapHandles = MapBuilder.build()
 
@@ -41,6 +58,7 @@ Shop.start(Data)
 BrainrotService.start(Data)
 BuildingService.start(Data, BrainrotService)
 CombatService.start(Data, BrainrotService, BuildingService)
+FartJumpService.start(Data)
 GlobalLeaderboard.start(Data, mapHandles.leaderboardPart)
 
 print("[Server] FART BRAINROT SIMULATOR ready 💨")

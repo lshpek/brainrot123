@@ -13,6 +13,25 @@ Config.Training = {
 	AutoTrainInterval = 0.6, -- punch rate for the Auto Train gamepass
 }
 
+-- ============================== FART JUMP (signature ability) =============
+-- Server-authoritative burst jump. Strength (power) scales the impulse with
+-- diminishing returns up to a hard cap, so upgrades feel meaningful but never
+-- become unbounded. All values are tunable here; the server recomputes from
+-- the player's real power and ignores any client-supplied velocity.
+Config.FartJump = {
+	enabled = true,
+	cooldown = 1.6, -- seconds between jumps (server-enforced)
+	basePower = 55, -- upward impulse at strength 0
+	powerPerStrength = 6, -- impulse added per "strength point"
+	strengthSoftCap = 2500, -- power beyond this scales with diminishing returns
+	diminishingFactor = 0.5, -- exponent applied past the soft cap (0.5 = sqrt)
+	maxUpImpulse = 140, -- hard cap on vertical impulse
+	maxForwardImpulse = 70, -- hard cap on horizontal impulse
+	forwardFactor = 0.8, -- horizontal impulse relative to upward
+	groundedOnly = true, -- must be on the ground to launch
+	cooldownAttribute = "FartJumpReadyAt", -- os.clock() timestamp, client-side hint only
+}
+
 Config.Rebirth = {
 	BaseCost = 10_000, -- power needed for the first rebirth
 	CostGrowth = 3, -- each rebirth costs 3x the previous one

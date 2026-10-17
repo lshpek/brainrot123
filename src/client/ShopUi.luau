@@ -210,9 +210,10 @@ local function buildRobuxTab(parent: Frame)
 			Position = UDim2.new(1, -10, 0.5, 0),
 			Color = UI.Palette.good,
 			Parent = container,
-		}).Activated:Connect(function()
-			MarketplaceService:PromptProductPurchase(player, product.id)
-		end)
+		}).Activated
+			:Connect(function()
+				MarketplaceService:PromptProductPurchase(player, product.id)
+			end)
 	end
 
 	if not anyVisible then
@@ -252,7 +253,10 @@ function ShopUi.build()
 	})
 
 	local gearPage = UI.create("Frame", { Size = UDim2.fromScale(1, 1), BackgroundTransparency = 1, Parent = pages })
-	local robuxPage = UI.create("Frame", { Size = UDim2.fromScale(1, 1), BackgroundTransparency = 1, Visible = false, Parent = pages })
+	local robuxPage = UI.create(
+		"Frame",
+		{ Size = UDim2.fromScale(1, 1), BackgroundTransparency = 1, Visible = false, Parent = pages }
+	)
 	buildGearTab(gearPage)
 	buildRobuxTab(robuxPage)
 

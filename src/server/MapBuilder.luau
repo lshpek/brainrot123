@@ -59,48 +59,82 @@ local function billboard(adornee: BasePart, text: string, color: Color3, offsetY
 	return gui, label
 end
 
-local function buildTrainingPads(parent: Folder, center: Vector3, offsets: { Vector3 }, accent: Color3, multiplier: number)
+local function buildTrainingPads(
+	parent: Folder,
+	center: Vector3,
+	offsets: { Vector3 },
+	accent: Color3,
+	multiplier: number
+)
 	for _, offset in offsets do
 		local pad = part({
 			Name = "TrainingPad",
-			Shape = Enum.PartType.Cylinder,
-			Size = Vector3.new(1, 14, 14),
-			CFrame = CFrame.new(center + offset + Vector3.new(0, 0.5, 0)) * CFrame.Angles(0, 0, math.rad(90)),
+			Shape = Enum.PartType.Block,
+			Size = Vector3.new(16, 1, 16),
+			CFrame = CFrame.new(center + offset + Vector3.new(0, 0.5, 0)),
 			Color = accent,
-			Material = Enum.Material.Neon,
+			Material = Enum.Material.SmoothPlastic,
 			Parent = parent,
 		})
-		billboard(pad, `x{multiplier} 💪`, accent, 6, UDim2.fromScale(8, 2.4))
+		local ring = part({
+			Name = "PadRing",
+			Size = Vector3.new(17, 0.2, 17),
+			CFrame = CFrame.new(center + offset + Vector3.new(0, 0.51, 0)),
+			Color = Color3.new(accent.R * 0.5, accent.G * 0.5, accent.B * 0.5),
+			Material = Enum.Material.SmoothPlastic,
+			Transparency = 0.4,
+			Parent = parent,
+		})
+		billboard(pad, `x{multiplier} 💪`, accent, 4, UDim2.fromScale(8, 2.4))
 	end
 end
 
 local function buildDecorations(parent: Folder, center: Vector3, accent: Color3, seed: number)
 	local rng = Random.new(seed)
-	for _ = 1, 8 do
-		-- Ring placement near the zone edges so pillars never block the pads.
+	for _ = 1, 10 do
 		local angle = rng:NextNumber(0, math.pi * 2)
-		local radius = rng:NextNumber(46, 62)
-		local width = rng:NextNumber(4, 8)
-		local height = rng:NextNumber(8, 32)
-		local position = center + Vector3.new(math.cos(angle) * radius, height / 2, math.sin(angle) * radius)
+		local radius = rng:NextNumber(42, 60)
+		local position = center + Vector3.new(math.cos(angle) * radius, 0, math.sin(angle) * radius)
 
-		local pillar = part({
-			Name = "Pillar",
-			Size = Vector3.new(width, height, width),
-			CFrame = CFrame.new(position) * CFrame.Angles(0, angle, 0),
-			Color = accent,
-			Material = Enum.Material.SmoothPlastic,
+		local rockSize = rng:NextNumber(2, 5)
+		local rock = part({
+			Name = "Rock",
+			Size = Vector3.new(rockSize, rockSize * 0.6, rockSize),
+			CFrame = CFrame.new(position + Vector3.new(0, rockSize * 0.3, 0)),
+			Color = Color3.fromRGB(90, 90, 95),
+			Material = Enum.Material.Rock,
 			Parent = parent,
 		})
-		part({
-			Name = "PillarCap",
-			Size = Vector3.new(width + 1, 1.5, width + 1),
-			CFrame = pillar.CFrame * CFrame.new(0, height / 2 + 0.75, 0),
-			Color = accent,
-			Material = Enum.Material.Neon,
-			Parent = parent,
-		})
+		if rng:NextNumber() > 0.4 then
+			part({
+				Name = "Bush",
+				Size = Vector3.new(3, 2, 3),
+				CFrame = CFrame.new(position + Vector3.new(rng:NextNumber(-2, 2), 1, rng:NextNumber(-2, 2))),
+				Color = Color3.fromRGB(80, 140, 60),
+				Material = Enum.Material.Grass,
+				Parent = parent,
+			})
+		end
 	end
+end
+
+-- Builds a paved path connecting two zone centers.
+local function buildPath(from: Vector3, to: Vector3, width: number, parent: Folder)
+	local direction = (to - from)
+	local length = direction.Magnitude
+	if length == 0 then
+		return
+	end
+	local mid = (from + to) / 2
+	local cf = CFrame.lookAt(mid, to)
+	local path = part({
+		Name = "Path",
+		Size = Vector3.new(width, 0.6, length),
+		CFrame = cf * CFrame.new(0, 0.31, 0),
+		Color = Color3.fromRGB(150, 140, 120),
+		Material = Enum.Material.Concrete,
+		Parent = parent,
+	})
 end
 
 function MapBuilder.getZoneAt(position: Vector3)
@@ -124,6 +158,8 @@ function MapBuilder.build()
 	gates.Name = "ZoneGates"
 
 	-- ============================== MAIN ZONES ==============================
+	local prevCenter = Vector3.new(0, 0, 0)
+
 	for index, zone in Config.Zones do
 		local centerX = (index - 1) * ZONE_SIZE
 		local center = Vector3.new(centerX, 0, 0)
@@ -131,6 +167,7 @@ function MapBuilder.build()
 		zoneFolder.Name = zone.name
 		zoneFolder.Parent = map
 
+		-- Zone floor platform.
 		part({
 			Name = "Floor",
 			Size = Vector3.new(ZONE_SIZE, 4, ZONE_SIZE),
@@ -140,8 +177,35 @@ function MapBuilder.build()
 			Parent = zoneFolder,
 		})
 
+		-- Zone border rim.
+		part({
+			Name = "Rim",
+			Size = Vector3.new(ZONE_SIZE + 2, 0.4, ZONE_SIZE + 2),
+			CFrame = CFrame.new(centerX, -1.8, 0),
+			Color = zone.accentColor,
+			Material = Enum.Material.SmoothPlastic,
+			Transparency = 0.6,
+			Parent = zoneFolder,
+		})
+
+		-- Zone name sign at the near edge.
+		local sign = part({
+			Name = "ZoneSign",
+			Size = Vector3.new(10, 4, 0.4),
+			CFrame = CFrame.new(centerX, 3, -ZONE_SIZE / 2 - 2),
+			Color = zone.accentColor,
+			Material = Enum.Material.SmoothPlastic,
+			Parent = zoneFolder,
+		})
+		billboard(sign, zone.name, Color3.fromRGB(240, 243, 250), 4, UDim2.fromScale(10, 2))
+
 		buildTrainingPads(zoneFolder, center, PAD_OFFSETS, zone.accentColor, zone.multiplier)
 		buildDecorations(zoneFolder, center, zone.accentColor, index * 7919)
+
+		-- Path from previous zone to this one.
+		if index > 1 then
+			buildPath(prevCenter, center, 14, map)
+		end
 
 		table.insert(zoneRegions, {
 			minX = centerX - ZONE_SIZE / 2,
@@ -162,8 +226,8 @@ function MapBuilder.build()
 				Size = Vector3.new(2, WALL_HEIGHT, ZONE_SIZE),
 				CFrame = CFrame.new(centerX - ZONE_SIZE / 2, WALL_HEIGHT / 2, 0),
 				Color = Color3.fromRGB(235, 87, 87),
-				Material = Enum.Material.ForceField,
-				Transparency = 0.2,
+				Material = Enum.Material.SmoothPlastic,
+				Transparency = 0.3,
 				Parent = gates,
 			})
 			gate:SetAttribute("PowerRequired", zone.powerRequired)
@@ -177,6 +241,8 @@ function MapBuilder.build()
 				UDim2.fromScale(24, 4)
 			)
 		end
+
+		prevCenter = center
 	end
 
 	-- ============================== VIP ISLAND ==============================

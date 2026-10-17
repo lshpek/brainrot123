@@ -31,6 +31,7 @@ function Shop.start(Data)
 			return
 		end
 		Data.setGearLevel(player, level)
+		Data.setMilestone(player, "first_upgrade")
 		notify:FireClient(player, "success", `Bought {gear.name} (x{gear.multiplier} power)!`)
 	end)
 

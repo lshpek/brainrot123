@@ -40,6 +40,27 @@ local function getRemotes()
 	notify = remotes:WaitForChild("Notify")
 end
 
+-- Flash a model's parts white briefly for hit feedback.
+local function flashModel(model: Model?, duration: number)
+	if not model then
+		return
+	end
+	local originals = {} -- [part] = originalColor
+	for _, part in model:GetDescendants() do
+		if part:IsA("BasePart") then
+			originals[part] = part.Color
+			part.Color = Color3.fromRGB(255, 255, 255)
+		end
+	end
+	task.delay(duration, function()
+		for part, color in originals do
+			if part and part.Parent then
+				part.Color = color
+			end
+		end
+	end)
+end
+
 -- Highlight the building under the cursor when in range.
 local function updateHighlight()
 	if not highlight then
@@ -78,7 +99,7 @@ local function updateHighlight()
 		highlight.Adornee = building
 		highlight.Size = building.Size + Vector3.new(0.2, 0.2, 0.2)
 		highlight.CFrame = building.CFrame
-		highlight.Color3 = Color3.fromRGB(255, 60, 60)
+		highlight.Color3 = Color3.fromRGB(255, 170, 60)
 		currentTarget = building
 	else
 		highlight.Adornee = nil
@@ -92,32 +113,49 @@ local function onAttackResult(result: { [string]: any })
 	end
 	if result.destroyed then
 		Effects.toast("success", `Destroyed! +{result.coins} 🪙 +{result.xp} XP`)
-	else
-		-- Damage popup at screen center.
-		local popup = UI.create("TextLabel", {
-			AnchorPoint = Vector2.new(0.5, 0.5),
-			Position = UDim2.new(0.5, 0, 0.4, 0),
-			Size = UDim2.fromOffset(200, 36),
-			BackgroundTransparency = 1,
-			Text = `-{result.damage} 💥`,
-			TextColor3 = Color3.fromRGB(255, 90, 90),
-			Font = Enum.Font.FredokaOne,
-			TextSize = 28,
-			TextStrokeTransparency = 0.3,
-			Parent = Effects.gui,
-		})
-		task.delay(0.8, function()
-			popup:Destroy()
-		end)
+		Effects.destructionBurst()
+		return
+	end
+
+	-- Damage popup at screen center.
+	local popup = UI.create("TextLabel", {
+		AnchorPoint = Vector2.new(0.5, 0.5),
+		Position = UDim2.new(0.5, 0, 0.4, 0),
+		Size = UDim2.fromOffset(200, 36),
+		BackgroundTransparency = 1,
+		Text = `-{result.damage} 💥`,
+		TextColor3 = Color3.fromRGB(255, 90, 90),
+		Font = Enum.Font.FredokaOne,
+		TextSize = 28,
+		TextStrokeTransparency = 0.3,
+		Parent = Effects.gui,
+	})
+	task.delay(0.8, function()
+		popup:Destroy()
+	end)
+
+	-- Threshold cues: when the building crosses into a damage stage or gets
+	-- close to destruction, give a distinct, restrained audio/visual signal.
+	if result.health and result.maxHealth and result.maxHealth > 0 then
+		local pct = result.health / result.maxHealth
+		if pct <= 0 and Effects.critCue then
+			Effects.critCue() -- last hit before destroy
+		elseif pct <= 0.4 and Effects.dangerCue then
+			Effects.dangerCue() -- "close to destruction"
+		end
 	end
 end
 
 local function onBuildingDestroyed(part: BasePart)
-	-- Visual feedback: flash the part.
+	-- Visual feedback: flash the whole building model briefly.
 	if not part then
 		return
 	end
-	part.Color = Color3.fromRGB(60, 60, 60)
+	local model = part.Parent
+	if model:IsA("Model") then
+		flashModel(model, 0.3)
+	end
+	part.Color = Color3.fromRGB(90, 90, 90)
 end
 
 function AttackClient.start()
@@ -133,14 +171,21 @@ function AttackClient.start()
 		if gameProcessed then
 			return
 		end
-		if input.UserInputType == Enum.UserInputType.MouseButton1
-			or input.UserInputType == Enum.UserInputType.Touch then
+		if
+			input.UserInputType == Enum.UserInputType.MouseButton1
+			or input.UserInputType == Enum.UserInputType.Touch
+		then
 			local now = os.clock()
 			if now - lastClick < Config.Combat.attackCooldown * 0.5 then
 				return
 			end
 			lastClick = now
 			if currentTarget and attackRemote then
+				-- Flash the target briefly for hit feedback.
+				local model = currentTarget.Parent
+				if model and model:IsA("Model") then
+					flashModel(model, 0.15)
+				end
 				attackRemote:FireServer(currentTarget)
 			end
 		end

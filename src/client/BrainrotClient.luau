@@ -95,14 +95,11 @@ function BrainrotClient.refresh()
 end
 
 function BrainrotClient.build()
-	local remotes = ReplicatedStorage:FindFirstChild("Remotes")
+	-- The server creates every RemoteEvent in init.server.luau. Never create
+	-- authoritative remotes from the client: if it isn't there yet, wait for it.
+	local remotes = ReplicatedStorage:WaitForChild("Remotes", 10)
 	if remotes then
-		equipRemote = remotes:FindFirstChild("EquipBrainrot")
-		if not equipRemote then
-			equipRemote = Instance.new("RemoteEvent")
-			equipRemote.Name = "EquipBrainrot"
-			equipRemote.Parent = remotes
-		end
+		equipRemote = remotes:WaitForChild("EquipBrainrot", 10)
 	end
 
 	local content = UI.window("Brainrots", "🧠 Brainrots", UDim2.fromOffset(520, 420))
