@@ -46,21 +46,23 @@ function BrainrotService.getEquippedDamage(player: Player): number
 	if not config then
 		return 0
 	end
-	-- Sum equipped pet damage bonuses.
+	-- Sum equipped pet damage bonuses (validated against owned pets).
 	local petDamageBonus = 0
 	local equippedPets = profile.equippedPets or {}
 	for petId, equipped in pairs(equippedPets) do
 		if equipped then
-			local petConfig = Config.Pets and Config.Pets[1] -- placeholder lookup below
-			-- Find the pet config by id.
-			for _, p in ipairs(Config.Pets) do
-				if p.id == petId then
-					petDamageBonus += p.damageBonus or 0
-					break
+			local petEntry = profile.pets and profile.pets[petId]
+			if petEntry and petEntry.owned then
+				for _, p in ipairs(Config.Pets) do
+					if p.id == petId then
+						petDamageBonus += p.damageBonus or 0
+						break
+					end
 				end
 			end
 		end
 	end
+	petDamageBonus = math.clamp(petDamageBonus, 0, Config.PetBonusCaps.damage)
 	return Brainrot.totalDamage(config, entry.level, petDamageBonus)
 end
 

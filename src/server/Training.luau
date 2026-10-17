@@ -61,6 +61,9 @@ local function punch(player: Player, bypassCooldown: boolean?)
 
 	Data.addPower(player, powerGain)
 	Data.addCoins(player, coinsGain)
+	pcall(function()
+		require(script.Parent.QuestService).onEvent(player, "power_gain", 0)
+	end)
 
 	-- Tell the client what it actually earned so the popup matches reality.
 	ReplicatedStorage.Remotes.Punch:FireClient(player, powerGain, coinsGain)

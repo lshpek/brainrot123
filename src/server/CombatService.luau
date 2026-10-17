@@ -32,7 +32,7 @@ function CombatService.start(dataService, brainrotService, buildingService)
 	assert(attackRemote, "[CombatService] Missing 'Attack' RemoteEvent (expected from init.server.luau)")
 
 	attackRemote.OnServerEvent:Connect(function(player, buildingPart)
-		if type(buildingPart) ~= "Instance" or not buildingPart:IsA("BasePart") then
+		if typeof(buildingPart) ~= "Instance" or not buildingPart:IsA("BasePart") then
 			return
 		end
 
@@ -48,6 +48,28 @@ function CombatService.start(dataService, brainrotService, buildingService)
 		local damage = BrainrotService.getEquippedDamage(player)
 		if damage <= 0 then
 			return
+		end
+
+		-- Boss target?
+		local bossData = nil
+		pcall(function()
+			bossData = require(script.Parent.BossService).resolve(buildingPart)
+		end)
+		if bossData then
+			local okBoss = false
+			pcall(function()
+				okBoss = require(script.Parent.BossService).damageBoss(player, buildingPart, damage)
+			end)
+			if okBoss then
+				local attackResult = remotes:FindFirstChild("AttackResult")
+				if attackResult then
+					attackResult:FireClient(
+						player,
+						{ destroyed = false, boss = true, health = bossData.health, maxHealth = bossData.maxHealth }
+					)
+				end
+				return
+			end
 		end
 
 		-- Validate the player is near the building (range checked in damageBuilding too).
@@ -69,9 +91,17 @@ function CombatService.start(dataService, brainrotService, buildingService)
 
 		-- Onboarding milestones: first successful hit, first destruction.
 		Data.setMilestone(player, "first_hit")
+		pcall(function()
+			require(script.Parent.QuestService).completeMilestone(player, "first_hit")
+		end)
 
 		if result.destroyed then
 			Data.setMilestone(player, "first_destroy")
+			pcall(function()
+				local QS = require(script.Parent.QuestService)
+				QS.completeMilestone(player, "first_destroy")
+				QS.onEvent(player, "destroy_building", 1)
+			end)
 			local notify = remotes:FindFirstChild("Notify")
 			if notify then
 				notify:FireClient(
@@ -101,6 +131,18 @@ function CombatService.start(dataService, brainrotService, buildingService)
 			if notify then
 				notify:FireClient(player, "error", "Cannot equip that Brainrot.")
 			end
+		else
+			pcall(function()
+				local Config = require(ReplicatedStorage.Shared.Config)
+				for _, b in ipairs(Config.Brainrots) do
+					if b.id == brainrotId then
+						local rarityRank = { Common = 1, Uncommon = 2, Rare = 3, Epic = 4, Legendary = 5, Mythic = 6 }
+						if (rarityRank[b.rarity] or 0) >= 3 then
+							require(script.Parent.QuestService).completeMilestone(player, "equip_rare_brainrot")
+						end
+					end
+				end
+			end)
 		end
 	end)
 
@@ -146,11 +188,28 @@ function CombatService.start(dataService, brainrotService, buildingService)
 				break
 			end
 		end
-		if not eggConfig then
+		if not eggConfig or type(eggConfig.petIds) ~= "table" then
+			return
+		end
+
+		-- Validate every configured pet id exists.
+		local validPets = {}
+		for _, petId in ipairs(eggConfig.petIds) do
+			for _, p in ipairs(Config.Pets) do
+				if p.id == petId then
+					table.insert(validPets, { id = petId, config = p })
+					break
+				end
+			end
+		end
+		if #validPets == 0 then
 			return
 		end
 
 		-- Validate cost.
+		if type(eggConfig.cost) ~= "number" or eggConfig.cost < 0 then
+			return
+		end
 		if not Data.trySpendCoins(player, eggConfig.cost) then
 			local notify = remotes:FindFirstChild("Notify")
 			if notify then
@@ -160,28 +219,28 @@ function CombatService.start(dataService, brainrotService, buildingService)
 		end
 
 		-- Server determines hatch result (weighted random by hatchChance).
-		local roll = Random.new():NextNumber(0, 100)
+		local rng = Random.new()
+		local roll = rng:NextNumber(0, 100)
 		local cumulative = 0
 		local selectedPet = nil
-		for _, petId in ipairs(eggConfig.petIds) do
-			local petConfig = nil
-			for _, p in ipairs(Config.Pets) do
-				if p.id == petId then
-					petConfig = p
-					break
-				end
+		for _, entry in ipairs(validPets) do
+			cumulative += entry.config.hatchChance or 0
+			if roll <= cumulative then
+				selectedPet = entry.id
+				break
 			end
-			if petConfig then
-				cumulative += petConfig.hatchChance
-				if roll <= cumulative then
-					selectedPet = petId
-					break
-				end
-			end
+		end
+		-- Safety: if rounding/precision leaves no selection, pick the last valid pet
+		-- so every paid hatch has an explicit outcome (no silent loss).
+		if not selectedPet and #validPets > 0 then
+			selectedPet = validPets[#validPets].id
 		end
 
 		if selectedPet then
-			Data.ownPet(player, selectedPet)
+			local granted = Data.ownPet(player, selectedPet)
+			pcall(function()
+				require(script.Parent.QuestService).completeMilestone(player, "first_pet")
+			end)
 			local petConfig = nil
 			for _, p in ipairs(Config.Pets) do
 				if p.id == selectedPet then

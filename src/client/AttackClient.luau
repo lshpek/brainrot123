@@ -77,20 +77,30 @@ local function updateHighlight()
 		return
 	end
 
-	-- Walk up to find a building part (a part with a HealthBar BillboardGui).
+	-- Walk up to find a building model, then resolve to its Body part (which
+	-- hosts the HealthBar). This allows clicking any part (window, roof, door).
 	local building = target
+	local resolved: BasePart? = nil
 	while building and building ~= workspace do
-		if building:IsA("BasePart") and building:FindFirstChild("HealthBar") then
+		if building:IsA("Model") then
+			local body = building:FindFirstChild("Body")
+			if body and body:IsA("BasePart") and body:FindFirstChild("HealthBar") then
+				resolved = body
+				break
+			end
+		elseif building:IsA("BasePart") and building:FindFirstChild("HealthBar") then
+			resolved = building
 			break
 		end
 		building = building.Parent
 	end
 
-	if not building or not building:IsA("BasePart") then
+	if not resolved then
 		highlight.Adornee = nil
 		currentTarget = nil
 		return
 	end
+	building = resolved
 
 	-- Range check.
 	local char = player.Character

@@ -46,6 +46,9 @@ function Shop.start(Data)
 			return
 		end
 		Data.applyRebirth(player)
+		pcall(function()
+			require(script.Parent.QuestService).completeMilestone(player, "first_rebirth")
+		end)
 		local bonus = profile.rebirths * Config.Rebirth.BonusPerRebirth * 100
 		notify:FireClient(player, "success", `Rebirth {profile.rebirths}! Permanent +{bonus}% power.`)
 		-- Zones re-lock when power resets; respawn so nobody is trapped behind a gate.

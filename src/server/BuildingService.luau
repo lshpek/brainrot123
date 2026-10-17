@@ -462,6 +462,15 @@ local function applyDamageStage(data)
 	local v = data.visuals
 	if v and v.body then
 		v.body.Color = darkened
+		-- Darken all solid structural parts consistently.
+		for _, p in data.parts do
+			if p.Parent and (p.Name == "Body" or p.Name == "Foundation") then
+				p.Color = darkened
+			end
+			if p.Parent and p.Name == "Window" and stage >= 2 then
+				p.Transparency = math.max(p.Transparency, 0.6)
+			end
+		end
 	end
 	data.barFill.Size = UDim2.fromScale(math.max(0, healthPct), 1)
 end
@@ -505,7 +514,7 @@ local function destroyBuilding(data)
 		data.health = data.maxHealth
 		for _, p in data.parts do
 			if p.Parent then
-				p.Transparency = 0
+				p.Transparency = if p.Name == "Window" then 0.35 else 0
 				p.CanCollide = SOLID_NAMES[p.Name] == true
 			end
 		end
@@ -594,11 +603,14 @@ function BuildingService.damageBuilding(player: Player, target: Instance, damage
 			local xpBonus = 0
 			for petId, equipped in pairs(equippedPets) do
 				if equipped then
-					for _, p in ipairs(Config.Pets) do
-						if p.id == petId then
-							coinBonus += p.coinsBonus or 0
-							xpBonus += p.xpBonus or 0
-							break
+					local petEntry = profile.pets and profile.pets[petId]
+					if petEntry and petEntry.owned then
+						for _, p in ipairs(Config.Pets) do
+							if p.id == petId then
+								coinBonus += p.coinsBonus or 0
+								xpBonus += p.xpBonus or 0
+								break
+							end
 						end
 					end
 				end
@@ -671,4 +683,7 @@ function BuildingService.spawnZoneBuildings(zoneName: string, zoneFolder: Folder
 	end
 end
 
-return BuildingService
+function BuildingService.spawnBuilding(buildingId: string, zoneFolder: Folder, position: Vector3)
+	local model, data = buildStructure(zoneFolder, buildingId, position)
+	return model, data
+end

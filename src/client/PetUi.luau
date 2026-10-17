@@ -318,6 +318,18 @@ function PetUi.build()
 
 	-- Refresh inventory when ownership/equipped state changes (server-driven).
 	player:GetAttributeChangedSignal("EquippedPets"):Connect(rebuildInventory)
+	for _, pet in ipairs(Config.Pets) do
+		player:GetAttributeChangedSignal("PetOwned." .. pet.id):Connect(rebuildInventory)
+	end
+
+	-- Refresh after a hatch result is confirmed by the server.
+	local remotes = ReplicatedStorage:FindFirstChild("Remotes")
+	local hatchResult = remotes and remotes:FindFirstChild("HatchResult")
+	if hatchResult then
+		hatchResult.OnClientEvent:Connect(function()
+			rebuildInventory()
+		end)
+	end
 end
 
 return PetUi

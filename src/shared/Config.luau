@@ -336,7 +336,7 @@ Config.Pets = {
 		id = "void_blob",
 		name = "Void Blob",
 		rarity = "Legendary",
-		hatchChance = 2,
+		hatchChance = 3,
 		damageBonus = 1.00,
 		coinsBonus = 0.50,
 		xpBonus = 0.30,
@@ -350,8 +350,8 @@ local basicChance = 0
 for _, pet in ipairs(Config.Pets) do
 	basicChance += pet.hatchChance
 end
-if basicChance > 100 then
-	warn("[Config] Pet hatch chances exceed 100%: " .. basicChance)
+if basicChance ~= 100 then
+	warn("[Config] Pet hatch chances do not total 100%: " .. basicChance)
 end
 
 Config.Eggs = {
@@ -365,8 +365,24 @@ Config.Eggs = {
 	},
 }
 
--- Max equipped pets per player.
-Config.MaxEquippedPets = 3
+-- Validate egg definitions.
+for _, egg in ipairs(Config.Eggs) do
+	for _, petId in ipairs(egg.petIds) do
+		local found = false
+		for _, pet in ipairs(Config.Pets) do
+			if pet.id == petId then
+				found = true
+				break
+			end
+		end
+		if not found then
+			warn("[Config] Egg '" .. tostring(egg.id) .. "' references unknown pet: " .. tostring(petId))
+		end
+	end
+	if type(egg.cost) ~= "number" or egg.cost < 0 then
+		warn("[Config] Egg '" .. tostring(egg.id) .. "' has invalid cost")
+	end
+end
 
 -- Pet bonus caps (prevent infinite stacking).
 Config.PetBonusCaps = {
@@ -374,6 +390,8 @@ Config.PetBonusCaps = {
 	coins = 2.0, -- max 200% coin bonus
 	xp = 2.0, -- max 200% XP bonus
 }
+
+Config.MaxEquippedPets = 3
 
 -- ============================== COMBAT ==============================
 Config.Combat = {
@@ -394,4 +412,201 @@ Config.ZoneBuildings = {
 	["Space"] = { "town_hall" },
 }
 
-return Config
+-- ============================== QUESTS ==============================
+Config.Quests = {
+	{
+		id = "first_hit",
+		name = "First Strike",
+		description = "Hit a building once.",
+		type = "milestone",
+		target = 1,
+		rewardCoins = 25,
+		rewardXp = 5,
+		world = "settlement",
+	},
+	{
+		id = "first_destroy",
+		name = "Demolition Rookie",
+		description = "Destroy your first building.",
+		type = "milestone",
+		target = 1,
+		rewardCoins = 50,
+		rewardXp = 10,
+		world = "settlement",
+	},
+	{
+		id = "destroy_10",
+		name = "Wrecking Crew",
+		description = "Destroy 10 buildings.",
+		type = "counter",
+		eventType = "destroy_building",
+		target = 10,
+		rewardCoins = 200,
+		rewardXp = 40,
+		world = "settlement",
+	},
+	{
+		id = "first_fartjump",
+		name = "Blast Off",
+		description = "Perform your first Fart Jump.",
+		type = "milestone",
+		target = 1,
+		rewardCoins = 30,
+		rewardXp = 5,
+		world = "settlement",
+	},
+	{
+		id = "first_pet",
+		name = "Pet Pal",
+		description = "Hatch your first pet.",
+		type = "milestone",
+		target = 1,
+		rewardCoins = 40,
+		rewardXp = 8,
+		world = "settlement",
+	},
+	{
+		id = "first_rebirth",
+		name = "Reborn",
+		description = "Complete your first rebirth.",
+		type = "milestone",
+		target = 1,
+		rewardCoins = 500,
+		rewardXp = 100,
+		world = "settlement",
+	},
+	{
+		id = "reach_power_1k",
+		name = "Getting Strong",
+		description = "Reach 1,000 power.",
+		type = "threshold",
+		stat = "power",
+		target = 1000,
+		rewardCoins = 100,
+		rewardXp = 20,
+		world = "settlement",
+	},
+	{
+		id = "equip_rare_brainrot",
+		name = "Brainrot Collector",
+		description = "Equip a Rare or better Brainrot.",
+		type = "milestone",
+		target = 1,
+		rewardCoins = 75,
+		rewardXp = 15,
+		world = "settlement",
+	},
+}
+Config.QuestById = {}
+for i, q in ipairs(Config.Quests) do
+	Config.QuestById[q.id] = i
+end
+
+-- ============================== BOSSES ==============================
+Config.Bosses = {
+	{
+		id = "settlement_boss",
+		name = "Slime Overlord",
+		world = "settlement",
+		maxHealth = 5000,
+		rewardCoins = 1000,
+		rewardXp = 200,
+		color = Color3.fromRGB(80, 200, 80),
+		size = Vector3.new(8, 10, 8),
+		respawnTime = 300,
+	},
+	{
+		id = "village_boss",
+		name = "Scarecrow King",
+		world = "village",
+		maxHealth = 15000,
+		rewardCoins = 3000,
+		rewardXp = 600,
+		color = Color3.fromRGB(180, 140, 60),
+		size = Vector3.new(9, 12, 9),
+		respawnTime = 300,
+	},
+	{
+		id = "city_boss",
+		name = "Traffic Titan",
+		world = "city",
+		maxHealth = 40000,
+		rewardCoins = 8000,
+		rewardXp = 1600,
+		color = Color3.fromRGB(60, 120, 200),
+		size = Vector3.new(10, 14, 10),
+		respawnTime = 300,
+	},
+	{
+		id = "megacity_boss",
+		name = "Neon Colossus",
+		world = "megacity",
+		maxHealth = 100000,
+		rewardCoins = 20000,
+		rewardXp = 4000,
+		color = Color3.fromRGB(120, 60, 220),
+		size = Vector3.new(12, 16, 12),
+		respawnTime = 300,
+	},
+	{
+		id = "space_city_boss",
+		name = "Void Leviathan",
+		world = "space_city",
+		maxHealth = 250000,
+		rewardCoins = 50000,
+		rewardXp = 10000,
+		color = Color3.fromRGB(40, 40, 80),
+		size = Vector3.new(14, 18, 14),
+		respawnTime = 300,
+	},
+}
+Config.BossById = {}
+for i, b in ipairs(Config.Bosses) do
+	Config.BossById[b.id] = i
+end
+
+-- ============================== WORLDS ==============================
+-- Five separate Roblox Places inside one Experience. Place IDs are 0 until
+-- real Places are created and configured in the Creator Dashboard.
+Config.Worlds = {
+	{
+		id = "settlement",
+		name = "Settlement",
+		rebirthRequired = 0,
+		placeId = 0,
+		description = "Starting world: Spawn Square, Main Street, Residential Block.",
+	},
+	{
+		id = "village",
+		name = "Village",
+		rebirthRequired = 10,
+		placeId = 0,
+		description = "Farms, windmill hill, waterway and bridges.",
+	},
+	{
+		id = "city",
+		name = "City",
+		rebirthRequired = 25,
+		placeId = 0,
+		description = "Central Plaza, commercial and residential districts.",
+	},
+	{
+		id = "megacity",
+		name = "Megacity",
+		rebirthRequired = 50,
+		placeId = 0,
+		description = "Skyline, financial district, elevated transit.",
+	},
+	{
+		id = "space_city",
+		name = "Space City",
+		rebirthRequired = 100,
+		placeId = 0,
+		description = "Orbital arrival, gravity research, floating platforms.",
+	},
+}
+
+Config.WorldById = {}
+for i, w in ipairs(Config.Worlds) do
+	Config.WorldById[w.id] = i
+end

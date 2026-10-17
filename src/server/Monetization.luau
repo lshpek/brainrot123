@@ -81,8 +81,16 @@ local function refreshPasses(player: Player)
 end
 
 local function processReceipt(receiptInfo)
-	-- Durable dedupe: a receipt Roblox re-sends (server restarted mid-grant, or
-	-- a race) must never grant currency twice.
+	if type(receiptInfo) ~= "table" then
+		return Enum.ProductPurchaseDecision.NotProcessedYet
+	end
+	if
+		type(receiptInfo.PurchaseId) ~= "number"
+		or type(receiptInfo.PlayerId) ~= "number"
+		or type(receiptInfo.ProductId) ~= "number"
+	then
+		return Enum.ProductPurchaseDecision.NotProcessedYet
+	end
 	if receiptAlreadyGranted(receiptInfo.PurchaseId) then
 		return Enum.ProductPurchaseDecision.PurchaseGranted
 	end
@@ -92,29 +100,43 @@ local function processReceipt(receiptInfo)
 		-- Player left or their data hasn't loaded; Roblox will retry later.
 		return Enum.ProductPurchaseDecision.NotProcessedYet
 	end
+	local profile = Data.get(player)
+
+	-- Recovery: if a previous attempt recorded the receipt in the profile but
+	-- failed to mark the receipt store, do not grant again.
+	if profile.receipts and profile.receipts[tostring(receiptInfo.PurchaseId)] then
+		markReceiptGranted(receiptInfo.PurchaseId)
+		return Enum.ProductPurchaseDecision.PurchaseGranted
+	end
 
 	for _, product in Config.DevProducts do
-		if product.id == receiptInfo.ProductId then
-			-- Grant first, then durably mark. If the grant throws, we return
-			-- NotProcessedYet so Roblox retries rather than acking a failure.
-			local ok = pcall(function()
-				Data.addCoins(player, product.coins)
-			end)
-			if not ok then
-				warn(`[Monetization] Failed to grant {product.key} to {player.Name}`)
-				return Enum.ProductPurchaseDecision.NotProcessedYet
+		if product.id == receiptInfo.ProductId and product.id ~= 0 then
+			-- Grant to the in-memory profile and record the receipt in the same
+			-- profile record, then durably save before acknowledging.
+			profile.coins = (profile.coins or 0) + (product.coins or 0)
+			if not profile.receipts then
+				profile.receipts = {}
 			end
+			profile.receipts[tostring(receiptInfo.PurchaseId)] = true
+			Data.syncProfile(player)
+			local saved = Data.save(player)
+			-- Best-effort durable marker in the independent receipt store.
 			markReceiptGranted(receiptInfo.PurchaseId)
-			local notify = ReplicatedStorage:FindFirstChild("Remotes")
-			notify = notify and notify:FindFirstChild("Notify")
-			if notify then
-				notify:FireClient(player, "success", `Purchased {product.label}!`)
+			if saved then
+				local notify = ReplicatedStorage:FindFirstChild("Remotes")
+				notify = notify and notify:FindFirstChild("Notify")
+				if notify then
+					notify:FireClient(player, "success", `Purchased {product.label}!`)
+				end
+				return Enum.ProductPurchaseDecision.PurchaseGranted
 			end
-			return Enum.ProductPurchaseDecision.PurchaseGranted
+			-- Profile save failed: ask Roblox to retry later. The in-memory
+			-- receipt record prevents a duplicate grant within this session.
+			return Enum.ProductPurchaseDecision.NotProcessedYet
 		end
 	end
 
-	warn(`[Monetization] Receipt for unknown product id {receiptInfo.ProductId}`)
+	warn(`[Monetization] Receipt for unknown or unconfigured product id {receiptInfo.ProductId}`)
 	-- Unknown/unconfigured product: never ack it as granted.
 	return Enum.ProductPurchaseDecision.NotProcessedYet
 end

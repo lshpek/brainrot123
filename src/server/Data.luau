@@ -8,6 +8,10 @@ local DataStoreService = game:GetService("DataStoreService")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 
 local Config = require(ReplicatedStorage.Shared.Config)
+local Analytics = nil
+pcall(function()
+	Analytics = require(script.Analytics)
+end)
 
 local DATASTORE_NAME = "PlayerData_v2"
 local AUTOSAVE_INTERVAL = 60
@@ -41,15 +45,55 @@ local DEFAULT_DATA = {
 	-- First-session onboarding milestones (persisted so the tutorial does not
 	-- repeat after rejoin/respawn). Keys are milestone ids.
 	milestones = {}, -- [milestoneId] = true
+	receipts = {}, -- [PurchaseId] = true (monetization idempotency)
+	staffRole = nil, -- server-assigned staff role (owner resolved at runtime)
 }
 
 local Data = {}
 
+-- Public accessor for the in-memory profile cache. Returns nil when the
+-- profile failed to load or is unavailable, so callers can guard safely.
+-- In sandbox mode, returns the isolated sandbox profile instead of the
+-- production profile.
+function Data.get(player: Player): { [string]: any }?
+	if sandboxEnabled[player] then
+		return sandboxProfiles[player]
+	end
+	return profiles[player]
+end
+
+-- Public save entry point used by monetization/admin flows.
+function Data.save(player: Player): boolean
+	return saveProfile(player)
+end
+
+-- Sandbox mode: isolate a separate in-memory profile so test actions do not
+-- touch production data or persistence. Never saves sandbox state.
+function Data.setSandboxMode(player: Player, enabled: boolean)
+	if enabled then
+		if not sandboxProfiles[player] then
+			local base = profiles[player]
+			sandboxProfiles[player] = base and deepCopy(base) or deepCopy(DEFAULT_DATA)
+		end
+		sandboxEnabled[player] = true
+	else
+		sandboxEnabled[player] = false
+		-- discard sandbox copy so next enable starts fresh
+		sandboxProfiles[player] = nil
+	end
+	player:SetAttribute("SandboxMode", enabled == true)
+end
+
+function Data.isSandbox(player: Player): boolean
+	return sandboxEnabled[player] == true
+end
 local profiles = {} -- [Player] = profile table
 local states = {} -- [Player] = STATE_* (lifecycle; unknown ~= new player)
 local loadTokens = {} -- [Player] = token, so stale/replaced sessions can't clobber
 local store = nil -- nil when DataStores are unavailable
 local dataStoresEnabled = false -- true only when we can actually read/write
+local sandboxProfiles = {} -- [Player] = isolated sandbox profile
+local sandboxEnabled = {} -- [Player] = boolean
 
 local function deepCopy(source)
 	local copy = {}
@@ -66,7 +110,7 @@ end
 -- Push the profile into leaderstats (auto-replicates to everyone's player list)
 -- and attributes (used by the client UI).
 local function sync(player: Player)
-	local profile = profiles[player]
+	local profile = (sandboxEnabled[player] and sandboxProfiles[player]) or profiles[player]
 	local stats = player:FindFirstChild("leaderstats")
 	if not profile or not stats then
 		return
@@ -91,6 +135,13 @@ local function sync(player: Player)
 	if profile.pets then
 		for petId, entry in pairs(profile.pets) do
 			player:SetAttribute("PetOwned." .. petId, entry and entry.owned == true)
+		end
+	end
+	-- Replicate Brainrot ownership/equipped state for the client collection UI.
+	if profile.brainrots then
+		for brainrotId, entry in pairs(profile.brainrots) do
+			player:SetAttribute("BrainrotOwned." .. brainrotId, entry and entry.owned == true)
+			player:SetAttribute("BrainrotLevel." .. brainrotId, entry and entry.level or 1)
 		end
 	end
 end
@@ -171,6 +222,9 @@ end
 -- load (that would persist default/unknown data over real progress) or when
 -- DataStores are off.
 local function saveProfile(player: Player): boolean
+	if sandboxEnabled[player] then
+		return false -- never persist sandbox state
+	end
 	local profile = profiles[player]
 	local state = states[player]
 	if not profile or not store then
@@ -278,8 +332,8 @@ end
 
 -- ============================== PUBLIC API ==============================
 
-function Data.get(player: Player)
-	return profiles[player]
+function Data.syncProfile(player: Player)
+	sync(player)
 end
 
 function Data.addPower(player: Player, amount: number)
@@ -462,9 +516,20 @@ function Data.getEquippedPets(player: Player): { [string]: boolean }?
 	return profile.equippedPets
 end
 
-function Data.ownPet(player: Player, petId: string)
+function Data.ownPet(player: Player, petId: string): boolean
 	local profile = profiles[player]
 	if not profile then
+		return false
+	end
+	-- Validate pet id exists in trusted config.
+	local valid = false
+	for _, p in ipairs(Config.Pets) do
+		if p.id == petId then
+			valid = true
+			break
+		end
+	end
+	if not valid then
 		return false
 	end
 	if not profile.pets[petId] then
@@ -472,6 +537,7 @@ function Data.ownPet(player: Player, petId: string)
 	else
 		profile.pets[petId].owned = true
 	end
+	sync(player)
 	return true
 end
 
@@ -546,6 +612,9 @@ function Data.setMilestone(player: Player, milestoneId: string)
 	end
 	profile.milestones[milestoneId] = true
 	player:SetAttribute("MS." .. milestoneId, true)
+	if Analytics then
+		Analytics.track(player, milestoneId, 1)
+	end
 end
 
 function Data.hasMilestone(player: Player, milestoneId: string): boolean
@@ -589,6 +658,8 @@ function Data.start()
 		profiles[player] = nil
 		states[player] = nil
 		loadTokens[player] = nil
+		sandboxProfiles[player] = nil
+		sandboxEnabled[player] = nil
 	end)
 
 	game:BindToClose(function()

@@ -208,12 +208,48 @@ function Hud.start()
 			UI.toggleWindow("Pets")
 		end)
 
+	UI.button({
+		Text = "🌍 Worlds",
+		Size = UDim2.fromOffset(120, 46),
+		LayoutOrder = 5,
+		Color = UI.Palette.panelLight,
+		TextColor = UI.Palette.text,
+		Parent = menu,
+	}).Activated
+		:Connect(function()
+			UI.toggleWindow("Worlds")
+		end)
+
+	UI.button({
+		Text = "📜 Quests",
+		Size = UDim2.fromOffset(120, 46),
+		LayoutOrder = 6,
+		Color = UI.Palette.panelLight,
+		TextColor = UI.Palette.text,
+		Parent = menu,
+	}).Activated
+		:Connect(function()
+			UI.toggleWindow("Quests")
+		end)
+
+	UI.button({
+		Text = "⚔ PvP",
+		Size = UDim2.fromOffset(120, 46),
+		LayoutOrder = 7,
+		Color = UI.Palette.panelLight,
+		TextColor = UI.Palette.text,
+		Parent = menu,
+	}).Activated
+		:Connect(function()
+			UI.toggleWindow("PvP")
+		end)
+
 	-- Auto Train toggle: only visible once the gamepass is owned.
 	local autoOn = false
 	local autoButton = UI.button({
 		Text = "⚡ Auto: OFF",
 		Size = UDim2.fromOffset(120, 46),
-		LayoutOrder = 5,
+		LayoutOrder = 6,
 		Color = UI.Palette.panelLight,
 		TextColor = UI.Palette.text,
 		Parent = menu,

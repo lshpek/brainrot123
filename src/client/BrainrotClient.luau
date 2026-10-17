@@ -27,6 +27,10 @@ function BrainrotClient.refresh()
 
 	local equippedId = player:GetAttribute("EquippedBrainrot") or "toxic_titan"
 
+	local function ownsBrainrot(id: string): boolean
+		return player:GetAttribute("BrainrotOwned." .. id) == true
+	end
+
 	local order = 0
 	for _, config in ipairs(Config.Brainrots) do
 		order += 1
@@ -72,25 +76,23 @@ function BrainrotClient.refresh()
 			Parent = container,
 		}, { UI.create("UITextSizeConstraint", { MaxTextSize = 14 }) })
 
+		local owned = ownsBrainrot(config.id)
+		local equipped = (config.id == equippedId)
+
 		local btn = UI.button({
-			Text = "EQUIP",
+			Text = if not owned then "LOCKED" elseif equipped then "EQUIPPED" else "EQUIP",
 			Size = UDim2.fromOffset(90, 36),
 			AnchorPoint = Vector2.new(1, 0.5),
 			Position = UDim2.new(1, -10, 0.5, 0),
+			Color = if not owned then UI.Palette.locked elseif equipped then UI.Palette.good else UI.Palette.accent,
 			Parent = container,
 		})
+		btn.Active = owned and not equipped
 		btn.Activated:Connect(function()
-			if equipRemote then
+			if owned and not equipped and equipRemote then
 				equipRemote:FireServer(config.id)
 			end
-			BrainrotClient.refresh()
 		end)
-
-		if config.id == equippedId then
-			btn.Text = "EQUIPPED"
-			btn.BackgroundColor3 = UI.Palette.good
-			btn.Active = false
-		end
 	end
 end
 
@@ -143,6 +145,12 @@ function BrainrotClient.build()
 	player:GetAttributeChangedSignal("EquippedBrainrot"):Connect(function()
 		BrainrotClient.refresh()
 	end)
+	for _, config in ipairs(Config.Brainrots) do
+		local attr = "BrainrotOwned." .. config.id
+		player:GetAttributeChangedSignal(attr):Connect(function()
+			BrainrotClient.refresh()
+		end)
+	end
 end
 
 return BrainrotClient

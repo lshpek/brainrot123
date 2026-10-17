@@ -106,6 +106,9 @@ function FartJumpService.start(dataService)
 		lastJump[player] = now
 		root:ApplyImpulse(velocity * root.AssemblyMass)
 		Data.setMilestone(player, "first_fartjump")
+		pcall(function()
+			require(script.Parent.QuestService).completeMilestone(player, "first_fartjump")
+		end)
 
 		-- Replicate a cooldown hint so the client can show the indicator
 		-- without trusting it for authority.
